@@ -1,0 +1,56 @@
+{
+  "name": "@polarity-lab/cosmos-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the Polarity exocortex. Read and write your personal knowledge graph from any LLM client.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "cosmos-mcp": "bin/cosmos-mcp.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js",
+    "prepublishOnly": "npm run build",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sh6drack/cosmos-mcp.git"
+  },
+  "homepage": "https://mcp.polarity-lab.com",
+  "bugs": {
+    "url": "https://github.com/sh6drack/cosmos-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "polarity",
+    "cosmos",
+    "exocortex",
+    "knowledge-graph",
+    "personal-data",
+    "ai-memory"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
