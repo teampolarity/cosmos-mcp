@@ -1,0 +1,9 @@
+name = "cosmos-mcp-landing"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+account_id = "11d89491913dac4b68c95b95562b7613"
+workers_dev = true
+
+routes = [
+  { pattern = "mcp.polarity-lab.com", custom_domain = true }
+]
