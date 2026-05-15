@@ -48,8 +48,9 @@ Write:
 | Env var | Default | Notes |
 |---------|---------|-------|
 | `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Override to point at a self-hosted cosmos. |
-| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` key. Overrides the cached file. |
+| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Overrides the cached file. |
 | `COSMOS_USER_ID` | (from token file) | Polarity user id. |
+| `COSMOS_SYSTEM_KEY` | (unset) | Shared system key (e.g. `POLARITYGPS_SYSTEM_KEY`). When set, the server uses single-tenant mode: `X-System-Key` auth instead of `X-MCP-Key`, with `COSMOS_USER_ID` as the acting user. Use this if you run your own cosmos or for testing before the per-user MCP-key endpoints are deployed. |
 
 ## Self-hosting cosmos
 

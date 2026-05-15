@@ -97,8 +97,11 @@ Usage:
 
 Environment:
   COSMOS_URL           Cosmos base URL (default: https://cosmos.polarity-lab.com)
-  COSMOS_MCP_KEY       MCP key (pmk_...). Overrides the cached token file.
+  COSMOS_MCP_KEY       Per-user MCP key (pmk_...). Overrides the cached token file.
   COSMOS_USER_ID       Polarity user id. Overrides the cached token file.
+  COSMOS_SYSTEM_KEY    Shared system key for single-tenant mode (sends X-System-Key
+                       instead of X-MCP-Key). Requires COSMOS_USER_ID. Use this when
+                       running your own cosmos or before per-user keys are deployed.
 
 Token cache:
   ~/.config/cosmos-mcp/token  (created by 'cosmos-mcp init', 0600 perms)

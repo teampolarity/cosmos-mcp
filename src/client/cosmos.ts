@@ -28,14 +28,20 @@ export class CosmosClient {
       }
     }
 
+    const headers: Record<string, string> = {
+      "X-Polarity-User-Id": this.config.polarityUserId,
+      "Content-Type": "application/json",
+      "User-Agent": "cosmos-mcp/0.1.0",
+    };
+    if (this.config.authMode === "system_key") {
+      headers["X-System-Key"] = this.config.authToken;
+    } else {
+      headers["X-MCP-Key"] = this.config.authToken;
+    }
+
     const res = await fetch(url, {
       method,
-      headers: {
-        "X-MCP-Key": this.config.mcpKey,
-        "X-Polarity-User-Id": this.config.polarityUserId,
-        "Content-Type": "application/json",
-        "User-Agent": "cosmos-mcp/0.1.0",
-      },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
 
