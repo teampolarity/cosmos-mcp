@@ -99,6 +99,19 @@ export class CosmosClient {
     });
   }
 
+  captureTurn(input: {
+    user_text: string;
+    assistant_text?: string;
+    source?: string;
+    max_observations?: number;
+  }) {
+    return this.request<CaptureTurnResponse>({
+      method: "POST",
+      path: "/api/polarity/capture-turn",
+      body: { polarity_user_id: this.config.polarityUserId, ...input },
+    });
+  }
+
   dump(input: { waypoint_id: string; name: string; lat?: number; lon?: number; message: string }) {
     return this.request<DumpResponse>({
       method: "POST",
@@ -208,6 +221,12 @@ export interface AskResponse {
 export interface ObserveResponse {
   node_id: number;
   kind: string;
+}
+
+export interface CaptureTurnResponse {
+  created: Array<{ node_id: number; kind: string; label: string }>;
+  extracted: number;
+  skipped: number;
 }
 
 export interface DumpResponse {

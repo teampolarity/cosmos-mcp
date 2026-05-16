@@ -99,6 +99,21 @@ export const TOOLS: ToolDef[] = [
       client.observe({ ...(input as { text: string }), kind: "preference" }),
   },
   {
+    name: "polarity_capture_turn",
+    description:
+      "Hand a whole user/assistant exchange to cosmos so it can extract every durable observation worth holding (preferences, constraints, project context, relationships, decisions, emotional signals, working-style rules). PREFER this over multiple polarity_observe calls when a turn contained more than one fact about the user. Pass the user's message in `user_text`, your reply in `assistant_text`. Cosmos returns the node ids it created.",
+    inputSchema: z
+      .object({
+        user_text: z.string().min(1).max(16000),
+        assistant_text: z.string().max(16000).optional(),
+        source: z.string().max(64).optional(),
+        max_observations: z.number().int().min(1).max(20).optional(),
+      })
+      .strict(),
+    handler: async (input, client) =>
+      client.captureTurn(input as Parameters<CosmosClient["captureTurn"]>[0]),
+  },
+  {
     name: "polarity_dump",
     description:
       "Write a short message tied to a location waypoint into the user's graph. PolarityGPS-style. Use only when the user is explicitly recording a place-anchored thought.",
