@@ -6,7 +6,7 @@
 
 <p align="center">
   One exocortex. Every agent.<br/>
-  <sub>MCP server for the Polarity knowledge graph.</sub>
+  <sub>MCP server for your Cosmos graph.</sub>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 Every AI you use is building its own private graph of you. Claude has one. ChatGPT has one. Cursor has one. None of them talk to each other, and none of them are yours.
 
-Polarity inverts that. Your knowledge graph lives in one place, and any MCP-capable client (Claude Code, Claude Desktop, Cursor, Codex, Zed, Continue) reads and writes to the same one. When an agent notices something durable about you, it lands in the graph. When you switch tools, the graph follows. The user, not the platform, owns the integration layer.
+Cosmos inverts that. Your knowledge graph lives in one place, and any MCP-capable client (Claude Code, Claude Desktop, Cursor, Codex, Zed, Continue) reads and writes to the same one. When an agent notices something durable about you, it lands in the graph. When you switch tools, the graph follows. The user, not the platform, owns the integration layer.
 
 The thing you carry is a `.polarity` file. Yours.
 
@@ -84,7 +84,7 @@ The cosmos backend is open. Run [taiscoding/cosmos](https://github.com/taiscodin
 ## The pitch in three lines
 
 > Your AI tools each know fragments of you. They are not allowed to share.
-> Polarity is the layer that lets them. You hold the key. The graph is portable.
+> Cosmos is the layer that lets them. You hold the key. The graph is portable.
 > When you leave, you take the understanding with you.
 
 ## License

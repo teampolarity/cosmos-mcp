@@ -30,7 +30,7 @@ export async function runBootstrap(): Promise<void> {
   // Display name for the connector on the grant page. Override with
   // COSMOS_MCP_CLIENT_NAME (e.g. "Claude Code", "Cursor") if you're embedding
   // this in a specific client and want it labeled in the user's connector list.
-  const clientName = process.env.COSMOS_MCP_CLIENT_NAME || "Polarity MCP";
+  const clientName = process.env.COSMOS_MCP_CLIENT_NAME || "Cosmos MCP";
   authUrl.searchParams.set("client_name", clientName);
 
   process.stderr.write(

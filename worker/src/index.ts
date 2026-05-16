@@ -6,7 +6,7 @@ const HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polarity MCP</title>
+<title>Cosmos MCP</title>
 <meta name="description" content="The bridge between your Polarity exocortex and any LLM client.">
 <style>
   :root {
@@ -82,10 +82,10 @@ const HTML = `<!doctype html>
 </head>
 <body>
 <main>
-  <h1>Polarity MCP</h1>
+  <h1>Cosmos MCP</h1>
   <p class="tagline">One graph. Any agent.</p>
 
-  <p>Polarity MCP is the bridge between your Polarity exocortex and any LLM client you use. Sign in once. Connect Claude, Cursor, Codex, Zed. They all read and write to the same knowledge graph. The graph stays yours.</p>
+  <p>Cosmos MCP is the bridge between your cosmos graph and any LLM client you use. Sign in once. Connect Claude, Cursor, Codex, Zed. They all read and write to the same graph. It stays yours.</p>
 
   <hr>
 
