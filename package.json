@@ -37,11 +37,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sh6drack/cosmos-mcp.git"
+    "url": "git+https://github.com/teampolarity/cosmos-mcp.git"
   },
   "homepage": "https://mcp.polarity-lab.com",
   "bugs": {
-    "url": "https://github.com/sh6drack/cosmos-mcp/issues"
+    "url": "https://github.com/teampolarity/cosmos-mcp/issues"
   },
   "keywords": [
     "mcp",
