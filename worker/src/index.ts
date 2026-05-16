@@ -1,11 +1,20 @@
 const NPM_URL = "https://www.npmjs.com/package/@polarity-lab/cosmos-mcp";
 const REPO_URL = "https://github.com/sh6drack/cosmos-mcp";
 
+// Matches cosmos.polarity-lab.com's favicon — mint signal dot on black.
+// Inlined as a string so the Worker has zero asset dependencies.
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#000000"/>
+  <circle cx="32" cy="32" r="6" fill="#7fedc7"/>
+  <circle cx="32" cy="32" r="14" fill="none" stroke="#7fedc7" stroke-width="1.5" opacity="0.4"/>
+</svg>`;
+
 const HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Cosmos MCP</title>
 <meta name="description" content="One graph. Any agent. MCP server for your Cosmos exocortex.">
 <meta property="og:title" content="Cosmos MCP">
@@ -174,6 +183,21 @@ export default {
           "cache-control": "public, max-age=300",
         },
       });
+    }
+
+    if (isGetLike && url.pathname === "/favicon.svg") {
+      return new Response(request.method === "HEAD" ? null : FAVICON_SVG, {
+        headers: {
+          "content-type": "image/svg+xml; charset=utf-8",
+          "cache-control": "public, max-age=86400",
+        },
+      });
+    }
+
+    if (isGetLike && url.pathname === "/favicon.ico") {
+      // Redirect ICO requests to the SVG so old browser defaults still get
+      // a proper image response instead of the HTML fallback.
+      return Response.redirect(new URL("/favicon.svg", request.url).toString(), 302);
     }
 
     if (isGetLike && url.pathname === "/install") {
