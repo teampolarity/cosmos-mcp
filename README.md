@@ -1,8 +1,27 @@
-# cosmos-mcp
+<p align="center">
+  <a href="https://mcp.polarity-lab.com"><img src="assets/polarity-mark.svg" alt="Polarity" width="180" /></a>
+</p>
 
-MCP server for the Polarity exocortex. Lets any MCP-capable LLM client (Claude Code, Claude Desktop, Cursor, Codex, Zed, Continue) read from and write to the user's personal knowledge graph in Cosmos.
+<h1 align="center">cosmos-mcp</h1>
 
-The user signs in once, gets a per-user MCP key, and any agent they connect can now know them across sessions and apps. Observations made by one agent show up for the next. The graph is portable — exportable as a `polarity/v1` JSON file the user owns.
+<p align="center">
+  One exocortex. Every agent.<br/>
+  <sub>MCP server for the Polarity knowledge graph.</sub>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@polarity-lab/cosmos-mcp"><img alt="npm" src="https://img.shields.io/npm/v/@polarity-lab/cosmos-mcp?style=flat-square&color=000" /></a>
+  <a href="https://github.com/sh6drack/cosmos-mcp/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@polarity-lab/cosmos-mcp?style=flat-square&color=000" /></a>
+  <a href="https://mcp.polarity-lab.com"><img alt="site" src="https://img.shields.io/badge/site-mcp.polarity--lab.com-000?style=flat-square" /></a>
+</p>
+
+---
+
+Every AI you use is building its own private graph of you. Claude has one. ChatGPT has one. Cursor has one. None of them talk to each other, and none of them are yours.
+
+Polarity inverts that. Your knowledge graph lives in one place, and any MCP-capable client (Claude Code, Claude Desktop, Cursor, Codex, Zed, Continue) reads and writes to the same one. When an agent notices something durable about you, it lands in the graph. When you switch tools, the graph follows. The user, not the platform, owns the integration layer.
+
+The thing you carry is a `.polarity` file. Yours.
 
 ## Install
 
@@ -10,9 +29,7 @@ The user signs in once, gets a per-user MCP key, and any agent they connect can 
 npx -y @polarity-lab/cosmos-mcp init
 ```
 
-This opens your browser, signs you in at cosmos.polarity-lab.com, mints an MCP key, and saves it to `~/.config/cosmos-mcp/token`.
-
-Then point your MCP client at the server. For Claude Code:
+Opens your browser. Sign in at cosmos.polarity-lab.com, approve a per-user key, and the token lands at `~/.config/cosmos-mcp/token` (0600). Then point any MCP client at it:
 
 ```json
 {
@@ -25,40 +42,50 @@ Then point your MCP client at the server. For Claude Code:
 }
 ```
 
-For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS) the same shape applies.
+That config drops into `~/Library/Application Support/Claude/claude_desktop_config.json` for Claude Desktop, your `.cursor/mcp.json` for Cursor, the equivalent for whichever client.
 
-## Tools
+## What you get
 
-Read:
-- `polarity_whoami` — connectivity test; returns the polarity user id the key is bound to.
-- `polarity_export` — full personal graph as `polarity/v1` JSON.
-- `polarity_get_graph` — graph view, scoped by entity (`user`, `cosmos`, or `polarity`).
-- `polarity_ask` — natural-language question, synthesized over the user's graph.
+Ten tools, four read, six write.
 
-Write:
-- `polarity_observe` — freeform observation. Kind defaults to `observation`; can be `event` or `preference`.
-- `polarity_record_event` — convenience wrapper for events.
-- `polarity_record_preference` — convenience wrapper for preferences.
-- `polarity_dump` — location-anchored short message (PolarityGPS style).
-- `polarity_checkin` — check-in at a waypoint, triggers co-presence detection.
-- `polarity_declare` — declare future presence at a waypoint.
+**Read**
+
+| Tool | Calls | What it returns |
+|---|---|---|
+| `polarity_whoami` | `GET /api/polarity/whoami` | Bound user + scopes. Cheap probe. |
+| `polarity_export` | `POST /api/polarity/export` | Full personal graph as `polarity/v1` JSON. |
+| `polarity_get_graph` | `GET /api/polarity` | Graph view, scoped by entity (`user`, `cosmos`, `polarity`). |
+| `polarity_ask` | `POST /api/polarity/ask` | NL question synthesized over the graph. |
+
+**Write**
+
+| Tool | Calls | What it does |
+|---|---|---|
+| `polarity_observe` | `POST /api/polarity/observe` | Freeform observation. Cosmos extracts. |
+| `polarity_record_event` | `POST /api/polarity/observe` (kind=event) | Something happened at a point in time. |
+| `polarity_record_preference` | `POST /api/polarity/observe` (kind=preference) | A like, dislike, working-style rule. |
+| `polarity_dump` | `POST /api/polarity/dump` | Location-anchored short message. |
+| `polarity_checkin` | `POST /api/polarity/checkin` | Check-in at a waypoint. Triggers co-presence detection. |
+| `polarity_declare` | `POST /api/polarity/declare` | Declare future presence at a waypoint. |
 
 ## Configuration
 
-| Env var | Default | Notes |
-|---------|---------|-------|
-| `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Override to point at a self-hosted cosmos. |
-| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Overrides the cached file. |
+| Env var | Default | When you set it |
+|---|---|---|
+| `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Pointing at your own cosmos. |
+| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Overrides cache. |
 | `COSMOS_USER_ID` | (from token file) | Polarity user id. |
-| `COSMOS_SYSTEM_KEY` | (unset) | Shared system key (e.g. `POLARITYGPS_SYSTEM_KEY`). When set, the server uses single-tenant mode: `X-System-Key` auth instead of `X-MCP-Key`, with `COSMOS_USER_ID` as the acting user. Use this if you run your own cosmos or for testing before the per-user MCP-key endpoints are deployed. |
+| `COSMOS_SYSTEM_KEY` | (unset) | Single-tenant mode. Sends `X-System-Key` instead of `X-MCP-Key`. Requires `COSMOS_USER_ID`. For self-hosters or testing before per-user keys are deployed. |
 
-## Self-hosting cosmos
+## Self-hosting
 
-The cosmos backend is open: [taiscoding/cosmos](https://github.com/taiscoding/cosmos). Run your own deploy, generate your own MCP key against it, set `COSMOS_URL` to your domain. The `.polarity` file you export stays yours.
+The cosmos backend is open. Run [taiscoding/cosmos](https://github.com/taiscoding/cosmos) on your own Cloudflare account, mint a key against your instance, set `COSMOS_URL` to your domain. The graph stays on your D1. The `.polarity` export still works.
 
-## What this is
+## The pitch in three lines
 
-Most AI products build their own knowledge graph of you and keep it. Polarity inverts that. Your exocortex is one graph; any agent that holds your key can read and write to it. When you switch tools, the graph follows. When two agents both know you, they both contribute. The user, not the platform, owns the integration layer.
+> Your AI tools each know fragments of you. They are not allowed to share.
+> Polarity is the layer that lets them. You hold the key. The graph is portable.
+> When you leave, you take the understanding with you.
 
 ## License
 

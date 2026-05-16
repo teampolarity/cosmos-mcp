@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <!-- Slow-drifting bone bars woven through the P. Pattern transform
+         is animated horizontally via SMIL so the bars scroll across the
+         glyph wherever the SVG is loaded as <img>, including as a
+         browser-tab favicon (modern browsers animate SVG favicons). -->
+    <pattern id="tvbars" width="9" height="512" patternUnits="userSpaceOnUse" patternTransform="translate(0 0)">
+      <rect width="9" height="512" fill="#FFFFFF"/>
+      <rect x="0" width="1" height="512" fill="#04060c"/>
+      <animateTransform
+        attributeName="patternTransform"
+        attributeType="XML"
+        type="translate"
+        from="0 0"
+        to="-200 0"
+        dur="5.5s"
+        repeatCount="indefinite"/>
+    </pattern>
+    <!-- Fast-drifting bright bars layered on top for the strobe flash. -->
+    <pattern id="tvbars-fast" width="11" height="512" patternUnits="userSpaceOnUse" patternTransform="translate(0 0)">
+      <rect x="0" width="1" height="512" fill="#FFFFFF"/>
+      <animateTransform
+        attributeName="patternTransform"
+        attributeType="XML"
+        type="translate"
+        from="0 0"
+        to="200 0"
+        dur="1.7s"
+        repeatCount="indefinite"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="#04060c"/>
+  <text x="256" y="266"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-weight="500"
+        font-size="440"
+        letter-spacing="-10"
+        fill="url(#tvbars)"
+        text-anchor="middle"
+        dominant-baseline="central">P</text>
+  <text x="256" y="266"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-weight="500"
+        font-size="440"
+        letter-spacing="-10"
+        fill="url(#tvbars-fast)"
+        text-anchor="middle"
+        dominant-baseline="central"
+        style="mix-blend-mode: screen; opacity: 0.55;">P</text>
+</svg>
