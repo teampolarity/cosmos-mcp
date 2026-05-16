@@ -27,7 +27,11 @@ export async function runBootstrap(): Promise<void> {
   const authUrl = new URL("/api/auth/mcp/grant", DEFAULT_COSMOS_URL);
   authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("redirect_uri", redirectUri);
-  authUrl.searchParams.set("client_name", "cosmos-mcp");
+  // Display name for the connector on the grant page. Override with
+  // COSMOS_MCP_CLIENT_NAME (e.g. "Claude Code", "Cursor") if you're embedding
+  // this in a specific client and want it labeled in the user's connector list.
+  const clientName = process.env.COSMOS_MCP_CLIENT_NAME || "Polarity MCP";
+  authUrl.searchParams.set("client_name", clientName);
 
   process.stderr.write(
     `Open this URL in your browser to authorize cosmos-mcp:\n\n  ${authUrl.toString()}\n\n`,
