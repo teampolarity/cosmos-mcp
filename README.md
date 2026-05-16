@@ -11,8 +11,9 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@polarity-lab/cosmos-mcp"><img alt="npm" src="https://img.shields.io/npm/v/@polarity-lab/cosmos-mcp?style=flat-square&color=000" /></a>
-  <a href="https://github.com/sh6drack/cosmos-mcp/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@polarity-lab/cosmos-mcp?style=flat-square&color=000" /></a>
+  <a href="https://github.com/teampolarity/cosmos-mcp/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/@polarity-lab/cosmos-mcp?style=flat-square&color=000" /></a>
   <a href="https://mcp.polarity-lab.com"><img alt="site" src="https://img.shields.io/badge/site-mcp.polarity--lab.com-000?style=flat-square" /></a>
+  <a href="https://glama.ai/mcp/servers/@teampolarity/cosmos-mcp"><img alt="glama" src="https://img.shields.io/badge/listed%20on-glama-000?style=flat-square" /></a>
 </p>
 
 ---
@@ -46,7 +47,7 @@ That config drops into `~/Library/Application Support/Claude/claude_desktop_conf
 
 ## What you get
 
-Ten tools, four read, six write.
+Eleven tools, four read, seven write.
 
 **Read**
 
@@ -64,9 +65,23 @@ Ten tools, four read, six write.
 | `polarity_observe` | `POST /api/polarity/observe` | Freeform observation. Cosmos extracts. |
 | `polarity_record_event` | `POST /api/polarity/observe` (kind=event) | Something happened at a point in time. |
 | `polarity_record_preference` | `POST /api/polarity/observe` (kind=preference) | A like, dislike, working-style rule. |
+| `polarity_capture_turn` | `POST /api/polarity/capture-turn` | Hand a whole user/assistant exchange to cosmos. Pulls every durable observation in one call. Prefer over multiple `polarity_observe` calls. |
 | `polarity_dump` | `POST /api/polarity/dump` | Location-anchored short message. |
 | `polarity_checkin` | `POST /api/polarity/checkin` | Check-in at a waypoint. Triggers co-presence detection. |
 | `polarity_declare` | `POST /api/polarity/declare` | Declare future presence at a waypoint. |
+
+## Sources
+
+The MCP server is one way to write to the graph. Cosmos accepts source pages from anywhere you keep notes, and the MCP read tools see all of it through the same view.
+
+| Source | How it connects | What lands |
+|---|---|---|
+| **Notion** | OAuth at [cosmos.polarity-lab.com/connectors](https://cosmos.polarity-lab.com/connectors). Pick the pages and databases you want shared. | Each Notion page becomes a `source_page` node, keyed by Notion id, kept fresh by a daily sync. |
+| **Obsidian** | Community plugin: [polarity-lab/obsidian-cosmos](https://github.com/teampolarity/obsidian-cosmos). Paste your `pmk_` key, point at your vault. | Each note becomes a `source_page` node keyed by vault-relative path. Tags and wikilinks resolve into edges. |
+| **MCP clients** | This package. | Observations, events, preferences, location dumps, check-ins, declarations. |
+| **Direct API** | `POST /api/polarity/observe` with your key. | Anything you can express as an observation. |
+
+Unchanged pages are skipped server-side, so re-syncing a quiet vault or stable Notion workspace costs almost nothing.
 
 ## Configuration
 
