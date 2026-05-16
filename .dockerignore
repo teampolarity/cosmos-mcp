@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+tests
+vitest.config.ts
+tsconfig.test.json
+*.tgz
+dist
