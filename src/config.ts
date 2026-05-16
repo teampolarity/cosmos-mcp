@@ -17,7 +17,7 @@ const DEFAULT_COSMOS_URL = "https://cosmos.polarity-lab.com";
 const TOKEN_DIR = join(homedir(), ".config", "cosmos-mcp");
 const TOKEN_FILE = join(TOKEN_DIR, "token");
 
-export function loadConfig(): Config {
+export function loadConfig(): Config | null {
   const cosmosUrl = process.env.COSMOS_URL || DEFAULT_COSMOS_URL;
 
   // Single-tenant / dev mode: shared system key + explicit user id.
@@ -55,17 +55,8 @@ export function loadConfig(): Config {
     }
   }
 
-  if (!mcpKey) {
-    throw new Error(
-      "No Cosmos MCP key found. Run `npx @polarity-lab/cosmos-mcp init`, " +
-        "or set COSMOS_MCP_KEY (per-user) or COSMOS_SYSTEM_KEY (single-tenant) env var.",
-    );
-  }
-  if (!polarityUserId) {
-    throw new Error(
-      "No polarity user id found. Run `npx @polarity-lab/cosmos-mcp init` " +
-        "or set COSMOS_USER_ID env var.",
-    );
+  if (!mcpKey || !polarityUserId) {
+    return null;
   }
 
   return {
@@ -75,5 +66,10 @@ export function loadConfig(): Config {
     polarityUserId,
   };
 }
+
+export const UNCONFIGURED_MESSAGE =
+  "cosmos-mcp is not authenticated. Run `npx @polarity-lab/cosmos-mcp init` " +
+  "to mint a per-user key, or set COSMOS_MCP_KEY + COSMOS_USER_ID (or " +
+  "COSMOS_SYSTEM_KEY + COSMOS_USER_ID for single-tenant mode).";
 
 export const TOKEN_PATHS = { dir: TOKEN_DIR, file: TOKEN_FILE };

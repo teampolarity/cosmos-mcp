@@ -8,7 +8,7 @@ import {
 import { zodToJsonSchema } from "./util/zod-to-json.js";
 import { TOOLS, findTool } from "./tools/index.js";
 import { CosmosClient, CosmosError } from "./client/cosmos.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, UNCONFIGURED_MESSAGE } from "./config.js";
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "--version" || command === "-v") {
-    process.stdout.write("cosmos-mcp 0.1.0\n");
+    process.stdout.write("cosmos-mcp 0.1.5\n");
     return;
   }
   if (command === "--help" || command === "-h") {
@@ -28,10 +28,10 @@ async function main(): Promise<void> {
   }
 
   const config = loadConfig();
-  const client = new CosmosClient(config);
+  const client = config ? new CosmosClient(config) : null;
 
   const server = new Server(
-    { name: "cosmos-mcp", version: "0.1.0" },
+    { name: "cosmos-mcp", version: "0.1.5" },
     { capabilities: { tools: {} } },
   );
 
@@ -44,6 +44,12 @@ async function main(): Promise<void> {
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    if (!client) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: UNCONFIGURED_MESSAGE }],
+      };
+    }
     const tool = findTool(req.params.name);
     if (!tool) {
       return {
