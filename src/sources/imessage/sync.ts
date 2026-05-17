@@ -62,7 +62,7 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${opts.token}`,
+          "X-MCP-Key": opts.token,
         },
         body: JSON.stringify({
           source: "imessage",
