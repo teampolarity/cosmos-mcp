@@ -1,10 +1,16 @@
 import type { Config } from "../config.js";
+import { generateTraceParent, formatTraceParent } from "../trace.js";
 
 export interface CosmosRequestInit {
   method?: "GET" | "POST" | "DELETE" | "PATCH";
   path: string;
   body?: unknown;
   query?: Record<string, string | undefined>;
+}
+
+export interface ClientInfo {
+  name: string;
+  version?: string;
 }
 
 export class CosmosError extends Error {
@@ -18,7 +24,23 @@ export class CosmosError extends Error {
 }
 
 export class CosmosClient {
+  // sessionTraceId is held constant for the lifetime of the MCP stdio
+  // process. Every tool call from this client carries it as the
+  // trace_id half of `traceparent`, so the cosmos backend can group
+  // calls into a single session row in mcp_session_traces. A fresh
+  // parent_id (span) is minted per call.
+  private sessionTraceId: string | null = null;
+  // clientInfo is captured from the MCP `initialize` request by
+  // server.ts after the SDK handshake completes. Sent on every cosmos
+  // call as `X-MCP-Client` so the backend can attribute traces to
+  // Claude Desktop, Claude Code, Cursor, etc.
+  private clientInfo: ClientInfo | null = null;
+
   constructor(private readonly config: Config) {}
+
+  setClientInfo(info: ClientInfo | null | undefined): void {
+    this.clientInfo = info ?? null;
+  }
 
   async request<T = unknown>({ method = "GET", path, body, query }: CosmosRequestInit): Promise<T> {
     const url = new URL(path, this.config.cosmosUrl);
@@ -28,11 +50,20 @@ export class CosmosClient {
       }
     }
 
+    const trace = generateTraceParent(this.sessionTraceId ?? undefined);
+    this.sessionTraceId = trace.traceId;
+
     const headers: Record<string, string> = {
       "X-Polarity-User-Id": this.config.polarityUserId,
       "Content-Type": "application/json",
-      "User-Agent": "cosmos-mcp/0.1.0",
+      "User-Agent": "cosmos-mcp/0.2.0",
+      traceparent: formatTraceParent(trace),
     };
+    if (this.clientInfo?.name) {
+      headers["X-MCP-Client"] = this.clientInfo.version
+        ? `${this.clientInfo.name}/${this.clientInfo.version}`
+        : this.clientInfo.name;
+    }
     if (this.config.authMode === "system_key") {
       headers["X-System-Key"] = this.config.authToken;
     } else {

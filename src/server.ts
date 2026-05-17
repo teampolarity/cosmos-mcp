@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "--version" || command === "-v") {
-    process.stdout.write("cosmos-mcp 0.1.5\n");
+    process.stdout.write("cosmos-mcp 0.2.0\n");
     return;
   }
   if (command === "--help" || command === "-h") {
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const client = config ? new CosmosClient(config) : null;
 
   const server = new Server(
-    { name: "cosmos-mcp", version: "0.1.5" },
+    { name: "cosmos-mcp", version: "0.2.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -49,6 +49,14 @@ async function main(): Promise<void> {
         isError: true,
         content: [{ type: "text", text: UNCONFIGURED_MESSAGE }],
       };
+    }
+    // After the MCP initialize handshake the SDK exposes the client's
+    // self-reported name/version. Push it into the cosmos client so
+    // every outbound call carries X-MCP-Client. Idempotent — the
+    // setter just overwrites the field.
+    const clientImpl = server.getClientVersion();
+    if (clientImpl) {
+      client.setClientInfo({ name: clientImpl.name, version: clientImpl.version });
     }
     const tool = findTool(req.params.name);
     if (!tool) {
