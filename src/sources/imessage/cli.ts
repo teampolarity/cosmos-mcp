@@ -11,17 +11,18 @@ const CHAT_DB_PATH = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const DEFAULT_WINDOW_DAYS = 90;
 
 export async function runImessageCli(argv: string[]): Promise<number> {
-  const [sub] = argv;
+  const [sub, ...rest] = argv;
+  const verbose = rest.includes("--verbose") || rest.includes("-v");
   switch (sub) {
-    case "sync": return runSync();
+    case "sync": return runSync({ verbose });
     case "status": return runStatus();
     default:
-      process.stderr.write(`Usage: cosmos-mcp imessage <sync|status>\n`);
+      process.stderr.write(`Usage: cosmos-mcp imessage <sync|status> [--verbose]\n`);
       return 1;
   }
 }
 
-async function runSync(): Promise<number> {
+async function runSync(flags: { verbose: boolean }): Promise<number> {
   const apiBase = process.env.COSMOS_URL || "https://cosmos.polarity-lab.com";
   const token = process.env.COSMOS_TOKEN;
   if (!token) {
@@ -35,9 +36,9 @@ async function runSync(): Promise<number> {
     : new Date(Date.now() - DEFAULT_WINDOW_DAYS * 86400 * 1000);
   if (!state.window_start_at) state.window_start_at = since.toISOString();
   process.stdout.write(`cosmos · iMessage sync · since ${since.toISOString()}\n`);
-  const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 500 });
+  const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 500, verbose: flags.verbose });
   try {
-    const result = await syncImessage({ turns, state, apiBase, token });
+    const result = await syncImessage({ turns, state, apiBase, token, verbose: flags.verbose });
     saveState(statePath, state);
     process.stdout.write(
       `\n  ${result.persons_upserted} persons upserted\n` +
@@ -48,6 +49,9 @@ async function runSync(): Promise<number> {
     );
     return 0;
   } catch (e) {
+    // Persist whatever threads succeeded before the throw so a partial sync
+    // is recorded and a re-run does not redo work the server already accepted.
+    try { saveState(statePath, state); } catch {}
     process.stderr.write(`sync failed: ${(e as Error).message}\n`);
     return 1;
   }

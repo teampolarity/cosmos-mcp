@@ -21,6 +21,7 @@ export interface ReadTurnsOptions {
   dbPath: string;
   since: Date;
   chunkSize: number;
+  verbose?: boolean;
 }
 
 export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<CanonicalTurn[]> {
@@ -32,6 +33,9 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
   try {
     const sinceSeconds = Math.max(0, Math.floor(opts.since.getTime() / 1000) - APPLE_EPOCH_OFFSET_SECONDS);
     const sinceNs = BigInt(sinceSeconds) * 1_000_000_000n;
+    if (opts.verbose) {
+      process.stderr.write(`[chat-db] since=${opts.since.toISOString()} sinceNs=${sinceNs.toString()}\n`);
+    }
     const rows = db.prepare(`
       SELECT
         m.ROWID         AS row_id,
@@ -49,6 +53,10 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       WHERE m.date >= ?
       ORDER BY m.date ASC
     `).all(sinceNs) as any[];
+    if (opts.verbose) {
+      const distinctChats = new Set(rows.map((r) => String(r.chat_guid))).size;
+      process.stderr.write(`[chat-db] sql returned ${rows.length} rows across ${distinctChats} distinct chats\n`);
+    }
 
     // Keys are BigInt (defaultSafeIntegers) — use the string form for Map
     // lookups so the participant join compares cleanly to chat_row below.

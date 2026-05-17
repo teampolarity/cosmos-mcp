@@ -12,6 +12,7 @@ export interface SyncOptions {
   apiBase: string;
   token: string;
   fetch?: typeof globalThis.fetch;
+  verbose?: boolean;
 }
 
 export interface SyncResult {
@@ -39,7 +40,14 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  if (opts.verbose) {
+    process.stderr.write(`[sync] buffered ${byThread.size} distinct threads from chat-db generator\n`);
+  }
+
   for (const [threadId, turns] of byThread) {
+    if (opts.verbose) {
+      process.stderr.write(`[sync] thread ${threadId} · ${turns.length} turns\n`);
+    }
     const participantHandles = Array.from(new Set([
       "self",
       ...turns[0]?.participants ?? [],
@@ -77,6 +85,9 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
         throw new Error(`cosmos rejected sync for thread ${threadId}: ${res.status} ${detail}`);
       }
       const data = await res.json() as SyncResult;
+      if (opts.verbose) {
+        process.stderr.write(`[sync]   server response: persons=${data.persons_upserted} threads=${data.threads_upserted} fresh=${data.turns_seen} skipped=${data.turns_skipped}\n`);
+      }
       totals.persons_upserted += data.persons_upserted;
       totals.threads_upserted += data.threads_upserted;
       totals.turns_seen += data.turns_seen;
