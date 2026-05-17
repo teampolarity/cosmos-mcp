@@ -83,6 +83,10 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
         turn_id: t.turn_id,
         from_handle: t.from_handle,
         occurred_at: t.occurred_at,
+        // Message text rides along now that the server stores it and
+        // runs observation extraction over the transcript. Older syncs
+        // were metadata-only; existing turn rows backfill text in place.
+        text: t.text,
       }));
       const res = await f(`${opts.apiBase}/api/me/connectors/conversations/turns`, {
         method: "POST",
@@ -95,7 +99,7 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
           thread_id: threadId,
           participants,
           turns: slice,
-          extract: "metadata",
+          extract: "content",
         }),
       });
       if (!res.ok) {
