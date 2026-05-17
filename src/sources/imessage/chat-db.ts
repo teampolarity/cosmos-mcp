@@ -73,8 +73,54 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       participantsByChat.set(key, arr);
     }
 
-    let chunk: CanonicalTurn[] = [];
+    // Slop filter — don't ship threads that aren't relationships.
+    // Two rules, run after fetch so we know the full picture per chat:
+    //
+    //  1. No outgoing reply from the user. If the user has never sent a
+    //     message in this thread, it isn't a conversation. It's an OTP
+    //     code, a delivery alert, a cold pitch, a service notification.
+    //  2. All non-self handles are short codes. Real phone numbers are
+    //     7+ digits; SMS short codes are 3-6 (e.g. "62227", "AMZL").
+    //     Threads with only short-code participants are bulk SMS, not
+    //     relationships, even if the user once replied STOP.
+    const SHORT_CODE_RE = /^\+?[A-Z0-9]{3,6}$/i;
+    const userRepliedByGuid = new Map<string, boolean>();
+    const chatRowKeyByGuid = new Map<string, string>();
     for (const r of rows) {
+      const guid = String(r.chat_guid);
+      chatRowKeyByGuid.set(guid, (r.chat_row as bigint).toString());
+      const isFromMe = typeof r.is_from_me === "bigint" ? r.is_from_me !== 0n : !!r.is_from_me;
+      if (isFromMe) userRepliedByGuid.set(guid, true);
+    }
+    const slopReason = new Map<string, "no_reply" | "short_code_only">();
+    for (const [guid, chatRowKey] of chatRowKeyByGuid) {
+      if (!userRepliedByGuid.get(guid)) {
+        slopReason.set(guid, "no_reply");
+        continue;
+      }
+      const handles = participantsByChat.get(chatRowKey) ?? [];
+      const nonSelf = handles.filter((h) => h && h !== "self");
+      if (nonSelf.length > 0 && nonSelf.every((h) => SHORT_CODE_RE.test(h))) {
+        slopReason.set(guid, "short_code_only");
+      }
+    }
+    const slopThreads = new Set(slopReason.keys());
+    if (opts.verbose && slopThreads.size > 0) {
+      let noReply = 0, shortCode = 0;
+      for (const reason of slopReason.values()) {
+        if (reason === "no_reply") noReply++;
+        else shortCode++;
+      }
+      process.stderr.write(
+        `[chat-db] filtered ${slopThreads.size} slop threads ` +
+        `(${noReply} no-user-reply, ${shortCode} short-code-only)\n`
+      );
+    }
+
+    let chunk: CanonicalTurn[] = [];
+    let droppedRows = 0;
+    for (const r of rows) {
+      if (slopThreads.has(String(r.chat_guid))) { droppedRows++; continue; }
       // date_ns is a BigInt; divide by 1e6 to get milliseconds-since-Apple-epoch
       // safely without losing precision in the integer range we care about.
       const dateNs = r.date_ns as bigint;
@@ -98,6 +144,9 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       }
     }
     if (chunk.length) yield chunk;
+    if (opts.verbose && droppedRows > 0) {
+      process.stderr.write(`[chat-db] dropped ${droppedRows} rows from filtered slop threads\n`);
+    }
   } finally {
     db.close();
   }
