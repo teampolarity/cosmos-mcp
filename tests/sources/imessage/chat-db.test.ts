@@ -13,6 +13,11 @@ import { readTurns } from "../../../src/sources/imessage/chat-db.js";
 
 const TMP = path.join(os.tmpdir(), `chat-fixture-${Date.now()}.db`);
 
+// Apple-epoch nanoseconds for 2026-05-17T08:00:00Z is 800697600 * 1e9.
+// Each turn below shifts by a minute to keep ordering deterministic.
+const T0 = 800697600000000000n;
+const MIN = 60_000_000_000n;
+
 beforeAll(() => {
   const db = new Database(TMP);
   db.exec(`
@@ -29,37 +34,65 @@ beforeAll(() => {
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
     CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
   `);
-  // Four chats:
-  //   1) +12025550100  — user replied (real relationship)
-  //   2) +19175550199  — user replied (real relationship)
-  //   3) 62227         — SMS short code, user never replied (slop)
-  //   4) +13035550144  — full-length number, user never replied (slop)
-  db.exec(`
-    INSERT INTO handle (ROWID, id) VALUES
-      (1, '+12025550100'),
-      (2, '+19175550199'),
-      (3, '62227'),
-      (4, '+13035550144');
-    INSERT INTO chat (ROWID, guid) VALUES
-      (1, 'iMessage;-;+12025550100'),
-      (2, 'iMessage;-;chat0001'),
-      (3, 'iMessage;-;62227'),
-      (4, 'iMessage;-;+13035550144');
-    INSERT INTO message (ROWID, guid, text, handle_id, is_from_me, date) VALUES
-      (1, 'm-001', 'hey',     1, 0, 800697600000000000),
-      (2, 'm-002', 'sup',     1, 1, 800697660000000000),
-      (3, 'm-003', 'lol',     2, 0, 800698800000000000),
-      (4, 'm-004', 'haha',    2, 1, 800698860000000000),
-      (5, 'm-005', 'CODE 99', 3, 0, 800697700000000000),
-      (6, 'm-006', 'pitch',   4, 0, 800697750000000000);
-    INSERT INTO chat_message_join (chat_id, message_id) VALUES
-      (1, 1), (1, 2),
-      (2, 3), (2, 4),
-      (3, 5),
-      (4, 6);
-    INSERT INTO chat_handle_join (chat_id, handle_id) VALUES
-      (1, 1), (2, 2), (3, 3), (4, 4);
-  `);
+
+  // Two real relationships (each handle gets 5+ incoming turns so it
+  // clears MIN_EXCHANGE_TURNS), plus two slop chats:
+  //
+  //   chat 1 — +12025550100  (real, 6 turns, user replies)
+  //   chat 2 — +19175550199  (real, 6 turns, user replies)
+  //   chat 3 — 62227         (short-code SMS, user never replies)
+  //   chat 4 — +13035550144  (user never replies)
+  //
+  // Total surviving turns: 12. Total turns including slop: 14.
+  const insertHandles = db.prepare(`INSERT INTO handle (ROWID, id) VALUES (?, ?)`);
+  insertHandles.run(1, "+12025550100");
+  insertHandles.run(2, "+19175550199");
+  insertHandles.run(3, "62227");
+  insertHandles.run(4, "+13035550144");
+
+  const insertChats = db.prepare(`INSERT INTO chat (ROWID, guid) VALUES (?, ?)`);
+  insertChats.run(1, "iMessage;-;+12025550100");
+  insertChats.run(2, "iMessage;-;chat0001");
+  insertChats.run(3, "iMessage;-;62227");
+  insertChats.run(4, "iMessage;-;+13035550144");
+
+  const insertMsg = db.prepare(
+    `INSERT INTO message (ROWID, guid, text, handle_id, is_from_me, date) VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  const cmj = db.prepare(`INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)`);
+  const chj = db.prepare(`INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)`);
+
+  // Chat 1: 8 turns — handle 1 sends 6, user replies twice. Volume on
+  // handle 1 = 6 ≥ MIN_EXCHANGE_TURNS. All before 08:10.
+  let rowId = 1;
+  const c1Pattern = [0, 0, 1, 0, 0, 1, 0, 0]; // 6 incoming, 2 outgoing
+  for (let i = 0; i < c1Pattern.length; i++) {
+    const date = T0 + BigInt(i) * MIN;
+    insertMsg.run(rowId, `m-c1-${i}`, `t${i}`, 1, c1Pattern[i], date);
+    cmj.run(1, rowId);
+    rowId++;
+  }
+  chj.run(1, 1);
+
+  // Chat 2: 8 turns same pattern. All AFTER 08:10.
+  const T_AFTER = 800698200000000000n;
+  const c2Pattern = [0, 0, 1, 0, 0, 1, 0, 0];
+  for (let i = 0; i < c2Pattern.length; i++) {
+    const date = T_AFTER + BigInt(i) * MIN;
+    insertMsg.run(rowId, `m-c2-${i}`, `t${i}`, 2, c2Pattern[i], date);
+    cmj.run(2, rowId);
+    rowId++;
+  }
+  chj.run(2, 2);
+
+  // Chat 3: 1 turn from short-code, user never replies (slop)
+  insertMsg.run(rowId, `m-c3-0`, `CODE 99`, 3, 0, T0 + 30n * MIN);
+  cmj.run(3, rowId); chj.run(3, 3); rowId++;
+
+  // Chat 4: 1 turn from full-length handle, user never replies (slop)
+  insertMsg.run(rowId, `m-c4-0`, `cold pitch`, 4, 0, T0 + 31n * MIN);
+  cmj.run(4, rowId); chj.run(4, 4); rowId++;
+
   db.close();
 });
 
@@ -71,8 +104,8 @@ describe("chat-db.readTurns", () => {
     for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 100 })) {
       turns.push(...chunk);
     }
-    // Chat 1 (2 turns) + chat 2 (2 turns) survive; chats 3 + 4 are slop.
-    expect(turns.length).toBe(4);
+    // Two real chats × 8 turns = 16; slop chats dropped.
+    expect(turns.length).toBe(16);
     const first = turns[0];
     expect(first).toMatchObject({
       turn_id: expect.any(String),
@@ -87,33 +120,32 @@ describe("chat-db.readTurns", () => {
     for await (const chunk of readTurns({ dbPath: TMP, since: new Date("2026-05-17T08:10:00Z"), chunkSize: 100 })) {
       turns.push(...chunk);
     }
-    // Only chat 2's two turns are after the cutoff; chat 1 is before.
-    expect(turns.length).toBe(2);
-    expect(turns.map((t) => t.turn_id)).toEqual(
-      expect.arrayContaining([expect.stringContaining("m-003"), expect.stringContaining("m-004")])
-    );
+    // Only chat 2's eight turns are after the cutoff.
+    expect(turns.length).toBe(8);
+    for (const t of turns) {
+      expect(t.thread_id).toBe("iMessage;-;chat0001");
+    }
   });
 
   it("chunks at chunkSize boundary", async () => {
     const chunks: any[][] = [];
-    for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 2 })) {
+    for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 5 })) {
       chunks.push(chunk);
     }
-    // 4 surviving turns / chunkSize 2 → 2 chunks of 2.
-    expect(chunks.length).toBe(2);
-    expect(chunks[0].length).toBe(2);
-    expect(chunks[1].length).toBe(2);
+    // 16 surviving turns / chunkSize 5 → 5, 5, 5, 1.
+    expect(chunks.length).toBe(4);
+    expect(chunks[0].length).toBe(5);
+    expect(chunks[3].length).toBe(1);
   });
 
-  it("filters out slop threads: user-never-replied and short-code-only", async () => {
+  it("filters out slop threads (no-user-reply, short-code-only, low-volume)", async () => {
     const turns: any[] = [];
     for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 100 })) {
       turns.push(...chunk);
     }
-    // None of the slop chats should appear among the thread_ids.
     const threadIds = new Set(turns.map((t) => t.thread_id));
-    expect(threadIds.has("iMessage;-;62227")).toBe(false);          // short-code
-    expect(threadIds.has("iMessage;-;+13035550144")).toBe(false);   // no user reply
+    expect(threadIds.has("iMessage;-;62227")).toBe(false);
+    expect(threadIds.has("iMessage;-;+13035550144")).toBe(false);
     expect(threadIds.size).toBe(2);
   });
 });

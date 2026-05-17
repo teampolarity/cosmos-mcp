@@ -73,17 +73,22 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       participantsByChat.set(key, arr);
     }
 
-    // Slop filter — don't ship threads that aren't relationships.
-    // Two rules, run after fetch so we know the full picture per chat:
+    // Slop filter — don't ship threads or handles that aren't real
+    // relationships. Three rules, run after fetch so we know the full
+    // picture per chat:
     //
     //  1. No outgoing reply from the user. If the user has never sent a
-    //     message in this thread, it isn't a conversation. It's an OTP
-    //     code, a delivery alert, a cold pitch, a service notification.
-    //  2. All non-self handles are short codes. Real phone numbers are
-    //     7+ digits; SMS short codes are 3-6 (e.g. "62227", "AMZL").
-    //     Threads with only short-code participants are bulk SMS, not
-    //     relationships, even if the user once replied STOP.
+    //     message in this thread, it isn't a conversation. It's an OTP,
+    //     a delivery alert, a cold pitch, a service notification.
+    //  2. All non-self handles are short codes (3-6 char, digits or
+    //     uppercase letters: "62227", "AMZL", "FB-839"). Bulk SMS, not
+    //     relationships, even if the user once typed STOP.
+    //  3. Low-volume contacts. A handle with fewer than MIN_EXCHANGE
+    //     turns total across all surviving threads isn't a relationship;
+    //     it's noise. Filters out random one-off texts that would
+    //     otherwise become person nodes in the graph.
     const SHORT_CODE_RE = /^\+?[A-Z0-9]{3,6}$/i;
+    const MIN_EXCHANGE_TURNS = 5;  // total turns (sent + received) per handle to qualify as a real relationship
     const userRepliedByGuid = new Map<string, boolean>();
     const chatRowKeyByGuid = new Map<string, string>();
     for (const r of rows) {
@@ -92,7 +97,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       const isFromMe = typeof r.is_from_me === "bigint" ? r.is_from_me !== 0n : !!r.is_from_me;
       if (isFromMe) userRepliedByGuid.set(guid, true);
     }
-    const slopReason = new Map<string, "no_reply" | "short_code_only">();
+    const slopReason = new Map<string, "no_reply" | "short_code_only" | "low_volume">();
     for (const [guid, chatRowKey] of chatRowKeyByGuid) {
       if (!userRepliedByGuid.get(guid)) {
         slopReason.set(guid, "no_reply");
@@ -104,32 +109,68 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
         slopReason.set(guid, "short_code_only");
       }
     }
+
+    // Count turns per handle across threads that have already survived
+    // rules 1 and 2. A thread is dropped if every non-self participant
+    // is low-volume — preserves group threads where one prolific person
+    // pulls the thread above the bar but the casuals get dropped on the
+    // participant-rendering side via the same volume check.
+    const turnsByHandle = new Map<string, number>();
+    for (const r of rows) {
+      const guid = String(r.chat_guid);
+      if (slopReason.has(guid)) continue;
+      const isFromMe = typeof r.is_from_me === "bigint" ? r.is_from_me !== 0n : !!r.is_from_me;
+      if (isFromMe) continue;
+      const h = r.handle_id;
+      if (!h) continue;
+      turnsByHandle.set(h, (turnsByHandle.get(h) ?? 0) + 1);
+    }
+    for (const [guid, chatRowKey] of chatRowKeyByGuid) {
+      if (slopReason.has(guid)) continue;
+      const handles = (participantsByChat.get(chatRowKey) ?? []).filter((h) => h && h !== "self");
+      if (handles.length === 0) continue;
+      const anyHighVolume = handles.some((h) => (turnsByHandle.get(h) ?? 0) >= MIN_EXCHANGE_TURNS);
+      if (!anyHighVolume) slopReason.set(guid, "low_volume");
+    }
+
     const slopThreads = new Set(slopReason.keys());
     if (opts.verbose && slopThreads.size > 0) {
-      let noReply = 0, shortCode = 0;
+      let noReply = 0, shortCode = 0, lowVolume = 0;
       for (const reason of slopReason.values()) {
         if (reason === "no_reply") noReply++;
-        else shortCode++;
+        else if (reason === "short_code_only") shortCode++;
+        else lowVolume++;
       }
       process.stderr.write(
         `[chat-db] filtered ${slopThreads.size} slop threads ` +
-        `(${noReply} no-user-reply, ${shortCode} short-code-only)\n`
+        `(${noReply} no-user-reply, ${shortCode} short-code-only, ${lowVolume} low-volume)\n`
       );
     }
+
+    const isHighVolume = (h: string | null | undefined): boolean =>
+      !!h && (turnsByHandle.get(h) ?? 0) >= MIN_EXCHANGE_TURNS;
 
     let chunk: CanonicalTurn[] = [];
     let droppedRows = 0;
     for (const r of rows) {
       if (slopThreads.has(String(r.chat_guid))) { droppedRows++; continue; }
+      const isFromMe = typeof r.is_from_me === "bigint" ? r.is_from_me !== 0n : !!r.is_from_me;
+      // Drop turns from low-volume senders inside otherwise-real threads.
+      // Group chats often have one prolific person and a long tail of
+      // casuals who once said "lol" — those casuals shouldn't become
+      // person nodes in the graph just because they were in the room.
+      if (!isFromMe && !isHighVolume(r.handle_id)) { droppedRows++; continue; }
       // date_ns is a BigInt; divide by 1e6 to get milliseconds-since-Apple-epoch
       // safely without losing precision in the integer range we care about.
       const dateNs = r.date_ns as bigint;
       const dateMs = Number(dateNs / 1_000_000n) + APPLE_EPOCH_OFFSET_SECONDS * 1000;
       const occurredAt = new Date(dateMs).toISOString();
-      const isFromMe = typeof r.is_from_me === "bigint" ? r.is_from_me !== 0n : !!r.is_from_me;
       const fromHandle = isFromMe ? "self" : (r.handle_id ?? "unknown");
       const threadParticipants = participantsByChat.get((r.chat_row as bigint).toString()) ?? [];
-      const allParticipants = ["self", ...threadParticipants];
+      // Same volume filter on the participants list: a group thread
+      // ships only the participants the user actually exchanges with.
+      const filteredParticipants = threadParticipants.filter(isHighVolume);
+      const allParticipants = ["self", ...filteredParticipants];
       chunk.push({
         turn_id: `imessage:${r.message_guid ?? String(r.row_id)}`,
         thread_id: r.chat_guid,
