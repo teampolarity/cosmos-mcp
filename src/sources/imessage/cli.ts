@@ -115,7 +115,10 @@ async function runSync(flags: SyncFlags): Promise<number> {
       `  ${result.threads_upserted} threads upserted\n` +
       `  ${result.turns_seen} fresh turns\n` +
       `  ${result.turns_skipped} already synced\n` +
-      `\nstate: ${statePath}\n`
+      `  ${result.text_backfilled ?? 0} text backfilled\n` +
+      `\nstate: ${statePath}\n` +
+      `\nobservation extraction runs server-side in the background.\n` +
+      `reload /me in a couple minutes to see new observations land.\n`
     );
     return 0;
   } catch (e) {

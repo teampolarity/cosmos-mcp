@@ -32,6 +32,7 @@ export interface SyncResult {
   turns_seen: number;
   turns_skipped: number;
   observations_created: number;
+  text_backfilled?: number;
 }
 
 export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
@@ -108,7 +109,13 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       }
       const data = await res.json() as SyncResult;
       if (opts.verbose) {
-        process.stderr.write(`[sync]   ${threadId} chunk ${i / CHUNK_SIZE + 1}: persons=${data.persons_upserted} threads=${data.threads_upserted} fresh=${data.turns_seen} skipped=${data.turns_skipped}\n`);
+        const backfill = data.text_backfilled ?? 0;
+        process.stderr.write(
+          `[sync]   ${threadId} chunk ${i / CHUNK_SIZE + 1}: ` +
+          `persons=${data.persons_upserted} threads=${data.threads_upserted} ` +
+          `fresh=${data.turns_seen} skipped=${data.turns_skipped} ` +
+          `text_backfilled=${backfill}\n`
+        );
       }
       // JS is single-threaded; += on shared totals from interleaved
       // awaits is safe (no preemption mid-statement).
@@ -117,6 +124,7 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       totals.turns_seen += data.turns_seen;
       totals.turns_skipped += data.turns_skipped;
       totals.observations_created += data.observations_created;
+      totals.text_backfilled = (totals.text_backfilled ?? 0) + (data.text_backfilled ?? 0);
 
       const lastTurn = slice[slice.length - 1];
       opts.state.threads[threadId] = {
