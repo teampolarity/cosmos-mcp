@@ -6,6 +6,16 @@
 import { CanonicalTurn } from "./chat-db.js";
 import { ImessageState } from "./state.js";
 
+// Server caps each request at 2000 turns. Larger chunks = fewer HTTP
+// trips on the first sync of a heavy account.
+const CHUNK_SIZE = 2000;
+
+// Process N threads in parallel. Each thread is independent on the
+// server (different thread_node_id), and D1 batch() serializes the
+// writes internally, so concurrent posts mostly buys us the HTTP round-
+// trip latency overlap. 4 is conservative; raise if you have more.
+const DEFAULT_CONCURRENCY = 4;
+
 export interface SyncOptions {
   turns: AsyncGenerator<CanonicalTurn[]>;
   state: ImessageState;
@@ -13,6 +23,7 @@ export interface SyncOptions {
   token: string;
   fetch?: typeof globalThis.fetch;
   verbose?: boolean;
+  concurrency?: number;
 }
 
 export interface SyncResult {
@@ -25,12 +36,12 @@ export interface SyncResult {
 
 export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
   const f = opts.fetch ?? globalThis.fetch;
+  const concurrency = Math.max(1, opts.concurrency ?? DEFAULT_CONCURRENCY);
   const totals: SyncResult = {
     persons_upserted: 0, threads_upserted: 0, turns_seen: 0, turns_skipped: 0, observations_created: 0,
   };
 
-  // Buffer by thread so we ship one request per thread per sync.
-  // Threads longer than 500 turns split into multiple chronological chunks.
+  // Buffer by thread so we ship one request per thread (per chunk) per sync.
   const byThread = new Map<string, CanonicalTurn[]>();
   for await (const chunk of opts.turns) {
     for (const t of chunk) {
@@ -42,9 +53,16 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
 
   if (opts.verbose) {
     process.stderr.write(`[sync] buffered ${byThread.size} distinct threads from chat-db generator\n`);
+    process.stderr.write(`[sync] concurrency=${concurrency} chunk_size=${CHUNK_SIZE}\n`);
   }
 
-  for (const [threadId, turns] of byThread) {
+  // Worker-pool over threads. Each worker pulls a thread off the queue,
+  // posts every chunk for it sequentially (so a long thread's chunks
+  // stay ordered), then grabs the next thread. Threads themselves run
+  // in parallel up to `concurrency`.
+  const queue: Array<[string, CanonicalTurn[]]> = [...byThread.entries()];
+
+  async function postOneThread(threadId: string, turns: CanonicalTurn[]): Promise<void> {
     if (opts.verbose) {
       process.stderr.write(`[sync] thread ${threadId} · ${turns.length} turns\n`);
     }
@@ -60,8 +78,8 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       return { handle, is_self: false, name: meta?.name };
     });
 
-    for (let i = 0; i < turns.length; i += 500) {
-      const slice = turns.slice(i, i + 500).map((t) => ({
+    for (let i = 0; i < turns.length; i += CHUNK_SIZE) {
+      const slice = turns.slice(i, i + CHUNK_SIZE).map((t) => ({
         turn_id: t.turn_id,
         from_handle: t.from_handle,
         occurred_at: t.occurred_at,
@@ -86,8 +104,10 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       }
       const data = await res.json() as SyncResult;
       if (opts.verbose) {
-        process.stderr.write(`[sync]   server response: persons=${data.persons_upserted} threads=${data.threads_upserted} fresh=${data.turns_seen} skipped=${data.turns_skipped}\n`);
+        process.stderr.write(`[sync]   ${threadId} chunk ${i / CHUNK_SIZE + 1}: persons=${data.persons_upserted} threads=${data.threads_upserted} fresh=${data.turns_seen} skipped=${data.turns_skipped}\n`);
       }
+      // JS is single-threaded; += on shared totals from interleaved
+      // awaits is safe (no preemption mid-statement).
       totals.persons_upserted += data.persons_upserted;
       totals.threads_upserted += data.threads_upserted;
       totals.turns_seen += data.turns_seen;
@@ -101,6 +121,16 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       };
     }
   }
+
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next) return;
+      await postOneThread(next[0], next[1]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   opts.state.last_sync_at = new Date().toISOString();
   return totals;

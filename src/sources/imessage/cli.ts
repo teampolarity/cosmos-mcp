@@ -10,19 +10,35 @@ import { syncImessage } from "./sync.js";
 const CHAT_DB_PATH = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const DEFAULT_WINDOW_DAYS = 90;
 
+function parseIntFlag(rest: string[], name: string): number | undefined {
+  // Accepts both --flag=N and --flag N.
+  const eq = rest.find((a) => a.startsWith(`${name}=`));
+  if (eq) {
+    const n = parseInt(eq.slice(name.length + 1), 10);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  const idx = rest.indexOf(name);
+  if (idx >= 0 && rest[idx + 1]) {
+    const n = parseInt(rest[idx + 1], 10);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 export async function runImessageCli(argv: string[]): Promise<number> {
   const [sub, ...rest] = argv;
   const verbose = rest.includes("--verbose") || rest.includes("-v");
+  const concurrency = parseIntFlag(rest, "--concurrency");
   switch (sub) {
-    case "sync": return runSync({ verbose });
+    case "sync": return runSync({ verbose, concurrency });
     case "status": return runStatus();
     default:
-      process.stderr.write(`Usage: cosmos-mcp imessage <sync|status> [--verbose]\n`);
+      process.stderr.write(`Usage: cosmos-mcp imessage <sync|status> [--verbose] [--concurrency N]\n`);
       return 1;
   }
 }
 
-async function runSync(flags: { verbose: boolean }): Promise<number> {
+async function runSync(flags: { verbose: boolean; concurrency?: number }): Promise<number> {
   const apiBase = process.env.COSMOS_URL || "https://cosmos.polarity-lab.com";
   const token = process.env.COSMOS_TOKEN;
   if (!token) {
@@ -36,9 +52,13 @@ async function runSync(flags: { verbose: boolean }): Promise<number> {
     : new Date(Date.now() - DEFAULT_WINDOW_DAYS * 86400 * 1000);
   if (!state.window_start_at) state.window_start_at = since.toISOString();
   process.stdout.write(`cosmos · iMessage sync · since ${since.toISOString()}\n`);
-  const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 500, verbose: flags.verbose });
+  const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 2000, verbose: flags.verbose });
   try {
-    const result = await syncImessage({ turns, state, apiBase, token, verbose: flags.verbose });
+    const result = await syncImessage({
+      turns, state, apiBase, token,
+      verbose: flags.verbose,
+      concurrency: flags.concurrency,
+    });
     saveState(statePath, state);
     process.stdout.write(
       `\n  ${result.persons_upserted} persons upserted\n` +
