@@ -1,0 +1,67 @@
+// cli.ts — `cosmos-mcp imessage <subcommand>` entrypoint. v1 supports
+// only `sync` (metadata-only, default 90-day window) and `status`.
+
+import os from "node:os";
+import path from "node:path";
+import { readTurns } from "./chat-db.js";
+import { defaultPath, loadState, saveState } from "./state.js";
+import { syncImessage } from "./sync.js";
+
+const CHAT_DB_PATH = path.join(os.homedir(), "Library", "Messages", "chat.db");
+const DEFAULT_WINDOW_DAYS = 90;
+
+export async function runImessageCli(argv: string[]): Promise<number> {
+  const [sub] = argv;
+  switch (sub) {
+    case "sync": return runSync();
+    case "status": return runStatus();
+    default:
+      process.stderr.write(`Usage: cosmos-mcp imessage <sync|status>\n`);
+      return 1;
+  }
+}
+
+async function runSync(): Promise<number> {
+  const apiBase = process.env.COSMOS_URL || "https://cosmos.polarity-lab.com";
+  const token = process.env.COSMOS_TOKEN;
+  if (!token) {
+    process.stderr.write("error: COSMOS_TOKEN env var not set.\n");
+    return 1;
+  }
+  const statePath = defaultPath();
+  const state = loadState(statePath);
+  const since = state.last_sync_at
+    ? new Date(state.last_sync_at)
+    : new Date(Date.now() - DEFAULT_WINDOW_DAYS * 86400 * 1000);
+  if (!state.window_start_at) state.window_start_at = since.toISOString();
+  process.stdout.write(`cosmos · iMessage sync · since ${since.toISOString()}\n`);
+  const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 500 });
+  try {
+    const result = await syncImessage({ turns, state, apiBase, token });
+    saveState(statePath, state);
+    process.stdout.write(
+      `\n  ${result.persons_upserted} persons upserted\n` +
+      `  ${result.threads_upserted} threads upserted\n` +
+      `  ${result.turns_seen} fresh turns\n` +
+      `  ${result.turns_skipped} already synced\n` +
+      `\nstate: ${statePath}\n`
+    );
+    return 0;
+  } catch (e) {
+    process.stderr.write(`sync failed: ${(e as Error).message}\n`);
+    return 1;
+  }
+}
+
+async function runStatus(): Promise<number> {
+  const statePath = defaultPath();
+  const state = loadState(statePath);
+  process.stdout.write(JSON.stringify({
+    state_path: statePath,
+    last_sync_at: state.last_sync_at,
+    window_start_at: state.window_start_at,
+    handles_count: Object.keys(state.handles).length,
+    threads_count: Object.keys(state.threads).length,
+  }, null, 2) + "\n");
+  return 0;
+}
