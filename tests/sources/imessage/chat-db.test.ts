@@ -27,6 +27,7 @@ beforeAll(() => {
       ROWID INTEGER PRIMARY KEY,
       guid TEXT,
       text TEXT,
+      attributedBody BLOB,
       handle_id INTEGER,
       is_from_me INTEGER,
       date INTEGER

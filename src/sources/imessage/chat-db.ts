@@ -5,8 +5,53 @@
 // Apple's epoch offset from Unix is 978307200 seconds.
 
 import Database from "better-sqlite3";
+import { Unarchiver } from "node-typedstream";
 
 const APPLE_EPOCH_OFFSET_SECONDS = 978307200;
+
+// Apple Messages on macOS Ventura / iOS 16+ stopped writing plain text
+// to message.text for most rows and started storing the content in
+// message.attributedBody as an NSKeyedArchiver-encoded NSAttributedString.
+// Old SMS and a handful of iMessage flavors still populate text, so the
+// fast path stays. Everything else falls through to the typedstream
+// decoder, then to a regex carve-out if the blob is malformed.
+export function decodeMessageText(
+  text: string | null | undefined,
+  attributedBody: Buffer | null | undefined,
+): string | undefined {
+  if (typeof text === "string" && text.length > 0) return text;
+  if (!attributedBody || attributedBody.length === 0) return undefined;
+
+  // Tier 1 — proper NSKeyedArchiver decode. NSAttributedString extends
+  // NSString and inherits `.string` as the plain content.
+  try {
+    const root: any = Unarchiver.open(attributedBody).decodeSingleRoot();
+    const s = root?.string;
+    if (typeof s === "string" && s.length > 0) return s;
+  } catch { /* fall through */ }
+
+  // Tier 2 — regex carve-out. The attributedBody blob always contains
+  // the visible text as a contiguous UTF-8 stretch after the "NSString"
+  // class marker. Apple's length-prefix encoding varies (one byte, two
+  // bytes, four bytes depending on string length), so instead of parsing
+  // the prefix we grab the longest run of safe characters after the
+  // marker. Stays ASCII-printable + common whitespace so the desperate
+  // path can't smuggle in typedstream framing bytes that happened to
+  // decode as Unicode replacement chars. The proper tier-1 decoder
+  // already handles emoji and non-Latin scripts when the blob is well-
+  // formed; this tier only fires when tier-1 throws.
+  try {
+    const marker = attributedBody.indexOf(Buffer.from("NSString"));
+    if (marker < 0) return undefined;
+    const after = attributedBody.subarray(marker + 8).toString("utf8");
+    const runs = after.match(/[\x20-\x7e][\x20-\x7e\n\r\t]{3,}/g);
+    if (!runs || runs.length === 0) return undefined;
+    runs.sort((a, b) => b.length - a.length);
+    return runs[0].trim();
+  } catch {
+    return undefined;
+  }
+}
 
 export interface CanonicalTurn {
   turn_id: string;
@@ -38,14 +83,15 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
     }
     const rows = db.prepare(`
       SELECT
-        m.ROWID         AS row_id,
-        m.guid          AS message_guid,
-        m.text          AS text,
-        m.is_from_me    AS is_from_me,
-        m.date          AS date_ns,
-        h.id            AS handle_id,
-        c.guid          AS chat_guid,
-        c.ROWID         AS chat_row
+        m.ROWID           AS row_id,
+        m.guid            AS message_guid,
+        m.text            AS text,
+        m.attributedBody  AS attributed_body,
+        m.is_from_me      AS is_from_me,
+        m.date            AS date_ns,
+        h.id              AS handle_id,
+        c.guid            AS chat_guid,
+        c.ROWID           AS chat_row
       FROM message m
       LEFT JOIN handle h ON h.ROWID = m.handle_id
       JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
@@ -81,7 +127,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
     //     message in this thread, it isn't a conversation. It's an OTP,
     //     a delivery alert, a cold pitch, a service notification.
     //  2. All non-self handles are short codes (3-6 char, digits or
-    //     uppercase letters: "62227", "AMZL", "FB-839"). Bulk SMS, not
+    //     uppercase letters: "62227", "AMZL", "VZWMSG"). Bulk SMS, not
     //     relationships, even if the user once typed STOP.
     //  3. Low-volume contacts. A handle with fewer than MIN_EXCHANGE
     //     turns total across all surviving threads isn't a relationship;
@@ -176,7 +222,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
         thread_id: r.chat_guid,
         from_handle: fromHandle,
         occurred_at: occurredAt,
-        text: r.text ?? undefined,
+        text: decodeMessageText(r.text, r.attributed_body),
         participants: Array.from(new Set(allParticipants)),
       });
       if (chunk.length >= opts.chunkSize) {

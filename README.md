@@ -76,12 +76,33 @@ The MCP server is one way to write to the graph. Cosmos accepts source pages fro
 
 | Source | How it connects | What lands |
 |---|---|---|
+| **iMessage** | Local CLI: `npx -y @polarity-lab/cosmos-mcp imessage sync`. Mac only. Grant Terminal Full Disk Access first. | Conversational turns from `chat.db`, with text content. People appear as person nodes in your graph, sized by conversation weight, named via your local AddressBook, dated by your real message timestamps. |
 | **Notion** | OAuth at [cosmos.polarity-lab.com/connectors](https://cosmos.polarity-lab.com/connectors). Pick the pages and databases you want shared. | Each Notion page becomes a `source_page` node, keyed by Notion id, kept fresh by a daily sync. |
 | **Obsidian** | Community plugin: [polarity-lab/obsidian-cosmos](https://github.com/teampolarity/obsidian-cosmos). Paste your `pmk_` key, point at your vault. | Each note becomes a `source_page` node keyed by vault-relative path. Tags and wikilinks resolve into edges. |
 | **MCP clients** | This package. | Observations, events, preferences, location dumps, check-ins, declarations. |
 | **Direct API** | `POST /api/polarity/observe` with your key. | Anything you can express as an observation. |
 
-Unchanged pages are skipped server-side, so re-syncing a quiet vault or stable Notion workspace costs almost nothing.
+Unchanged pages are skipped server-side, so re-syncing a quiet vault or stable Notion workspace costs almost nothing. The iMessage sync is incremental too, watermarked on the last successful run, so re-running it is a no-op until new messages arrive.
+
+### iMessage sync
+
+`cosmos-mcp` ships an `imessage` subcommand that reads your local Messages database and lands every conversation in your graph.
+
+```bash
+# default: incremental sync, 90-day window on first run
+npx -y @polarity-lab/cosmos-mcp imessage sync
+
+# re-sync the original 90-day window regardless of watermark
+npx -y @polarity-lab/cosmos-mcp imessage sync --backfill
+
+# pull everything since a specific date
+npx -y @polarity-lab/cosmos-mcp imessage sync --since 2024-01-01
+
+# check what the last run did
+npx -y @polarity-lab/cosmos-mcp imessage status
+```
+
+A three-rule slop filter (no-reply senders, short-code numbers, low-volume contacts) keeps the graph clean. Your AddressBook resolves phone numbers and emails into real contact names. The reading is local to your Mac; only the extracted, normalized turns go into your cosmos graph, which is your account.
 
 ## Configuration
 
