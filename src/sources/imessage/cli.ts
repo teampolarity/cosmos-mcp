@@ -4,6 +4,7 @@
 import os from "node:os";
 import path from "node:path";
 import { readTurns } from "./chat-db.js";
+import { loadContacts } from "./contacts.js";
 import { defaultPath, loadState, saveState } from "./state.js";
 import { syncImessage } from "./sync.js";
 
@@ -52,6 +53,16 @@ async function runSync(flags: { verbose: boolean; concurrency?: number }): Promi
     : new Date(Date.now() - DEFAULT_WINDOW_DAYS * 86400 * 1000);
   if (!state.window_start_at) state.window_start_at = since.toISOString();
   process.stdout.write(`cosmos · iMessage sync · since ${since.toISOString()}\n`);
+
+  // Resolve handles → names from AddressBook before posting. Names ride
+  // along on the participants payload; server upsertPerson updates the
+  // existing person node's label in place, so a re-sync turns every
+  // phone-number node into the contact's name.
+  const contacts = loadContacts({ verbose: flags.verbose });
+  for (const [handle, name] of contacts) {
+    const existing = state.handles[handle] || { content_enabled: false };
+    state.handles[handle] = { ...existing, name };
+  }
   const turns = readTurns({ dbPath: CHAT_DB_PATH, since, chunkSize: 2000, verbose: flags.verbose });
   try {
     const result = await syncImessage({
