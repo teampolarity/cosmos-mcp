@@ -24,6 +24,38 @@ Cosmos inverts that. Your knowledge graph lives in one place, and any MCP-capabl
 
 The thing you carry is a `.polarity` file. Yours.
 
+## Provisioning
+
+There are two ways to get a `pmk_…` key onto your Mac.
+
+**Automatic.** Sign in at [cosmos.polarity-lab.com/connectors](https://cosmos.polarity-lab.com/connectors), tap "open in cosmos-mcp." The OS opens a one-shot handler that writes the key into your system keychain. You never see the raw key.
+
+For that deep link to work, register the URL scheme once:
+
+```bash
+npx -y @polarity-lab/cosmos-mcp install-handler
+```
+
+This drops a tiny `.app` into `~/Library/Application Support/cosmos-mcp/` and registers `cosmos-mcp://` with Launch Services. macOS-only.
+
+**Manual.** If you already have a `pmk_…` key, or you do not want to install the handler:
+
+```bash
+npx -y @polarity-lab/cosmos-mcp provision pmk_xxx
+```
+
+The CLI validates the key against cosmos, then stores it in the macOS system keychain under service `cosmos-mcp-key`. Subsequent `imessage sync`, `browser sync`, `calendar sync` calls read from the keychain. No env var needed.
+
+**Confirm iMessage access.**
+
+```bash
+npx -y @polarity-lab/cosmos-mcp imessage probe
+```
+
+Verifies Full Disk Access is granted and reports how many chats are visible. If you see an EACCES message, open System Settings, Privacy & Security, Full Disk Access, and add Terminal (or whichever app runs the CLI).
+
+**CI and self-hosters.** Set `COSMOS_TOKEN=pmk_…` in env. It takes precedence over the keychain, so existing pipelines keep working untouched.
+
 ## Install
 
 ```bash
@@ -109,7 +141,8 @@ A three-rule slop filter (no-reply senders, short-code numbers, low-volume conta
 | Env var | Default | When you set it |
 |---|---|---|
 | `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Pointing at your own cosmos. |
-| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Overrides cache. |
+| `COSMOS_TOKEN` | (from keychain) | `pmk_...` per-user key for CLI subcommands. Takes precedence over the macOS keychain entry. Set this in CI. |
+| `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Honored for back-compat. |
 | `COSMOS_USER_ID` | (from token file) | Polarity user id. |
 | `COSMOS_SYSTEM_KEY` | (unset) | Single-tenant mode. Sends `X-System-Key` instead of `X-MCP-Key`. Requires `COSMOS_USER_ID`. For self-hosters or testing before per-user keys are deployed. |
 
