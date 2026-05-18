@@ -53,6 +53,16 @@ export function decodeMessageText(
   }
 }
 
+export interface AttachmentRef {
+  // What lands in the server. Filename is the user-facing name, mime
+  // is the type the OS detected, bytes is total size, kind is a coarse
+  // category the LLM can read at a glance.
+  kind: 'photo' | 'video' | 'audio' | 'sticker' | 'pdf' | 'link' | 'file';
+  filename?: string;
+  mime?: string;
+  bytes?: number;
+}
+
 export interface CanonicalTurn {
   turn_id: string;
   thread_id: string;
@@ -60,6 +70,37 @@ export interface CanonicalTurn {
   occurred_at: string;
   text?: string;
   participants: string[];
+  links?: string[];
+  attachments?: AttachmentRef[];
+}
+
+// Coarse kind from a mime string. Apple stores 'image/jpeg', 'video/mp4',
+// 'audio/x-caf' (push-to-talk), 'application/pdf', 'application/x-link'
+// (rich-link previews). Fallback is generic 'file' so the extractor still
+// sees something useful.
+function classifyMime(mime: string | null | undefined, isSticker: boolean): AttachmentRef['kind'] {
+  if (isSticker) return 'sticker';
+  const m = (mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'photo';
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('audio/')) return 'audio';
+  if (m === 'application/pdf') return 'pdf';
+  if (m.includes('link') || m === 'application/x-apple-plist') return 'link';
+  return 'file';
+}
+
+// URL extraction: pull http/https URLs out of message text, dedupe, cap.
+// Apple's rich-link previews land as attachments separately (kind: 'link');
+// this catches inline-typed URLs that don't trigger preview generation.
+const URL_RE = /\bhttps?:\/\/[^\s<>"']+/gi;
+function extractLinks(text: string | undefined): string[] | undefined {
+  if (!text) return undefined;
+  const matches = text.match(URL_RE);
+  if (!matches || matches.length === 0) return undefined;
+  // Strip trailing punctuation that the regex greedily grabs.
+  const cleaned = matches.map((u) => u.replace(/[.,;:!?)\]>]+$/, ''));
+  const deduped = Array.from(new Set(cleaned));
+  return deduped.slice(0, 10);
 }
 
 export interface ReadTurnsOptions {
@@ -117,6 +158,46 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       const arr = participantsByChat.get(key) ?? [];
       arr.push(r.handle_id);
       participantsByChat.set(key, arr);
+    }
+
+    // Attachments per message. One SELECT, indexed in memory, so the row
+    // loop never goes back to the database. Only loads attachments tied
+    // to messages in the current `since` window (the inner subselect on
+    // m.date keeps us from pulling a decade of attachments on a fresh
+    // sync of recent history).
+    const attachmentsByMessageRow = new Map<string, AttachmentRef[]>();
+    const attachmentRows = db.prepare(`
+      SELECT
+        maj.message_id    AS message_id,
+        a.transfer_name   AS transfer_name,
+        a.mime_type       AS mime_type,
+        a.total_bytes     AS total_bytes,
+        a.is_sticker      AS is_sticker
+      FROM attachment a
+      JOIN message_attachment_join maj ON maj.attachment_id = a.ROWID
+      JOIN message m ON m.ROWID = maj.message_id
+      WHERE m.date >= ?
+    `).all(sinceNs) as Array<{
+      message_id: bigint;
+      transfer_name: string | null;
+      mime_type: string | null;
+      total_bytes: bigint | null;
+      is_sticker: bigint | number | null;
+    }>;
+    for (const a of attachmentRows) {
+      const key = a.message_id.toString();
+      const arr = attachmentsByMessageRow.get(key) ?? [];
+      const sticker = typeof a.is_sticker === 'bigint' ? a.is_sticker !== 0n : !!a.is_sticker;
+      arr.push({
+        kind: classifyMime(a.mime_type, sticker),
+        filename: a.transfer_name || undefined,
+        mime: a.mime_type || undefined,
+        bytes: a.total_bytes != null ? Number(a.total_bytes) : undefined,
+      });
+      attachmentsByMessageRow.set(key, arr);
+    }
+    if (opts.verbose) {
+      process.stderr.write(`[chat-db] indexed ${attachmentRows.length} attachments across ${attachmentsByMessageRow.size} messages\n`);
     }
 
     // Slop filter — don't ship threads or handles that aren't real
@@ -217,13 +298,18 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       // ships only the participants the user actually exchanges with.
       const filteredParticipants = threadParticipants.filter(isHighVolume);
       const allParticipants = ["self", ...filteredParticipants];
+      const decodedText = decodeMessageText(r.text, r.attributed_body);
+      const links = extractLinks(decodedText);
+      const atts = attachmentsByMessageRow.get((r.row_id as bigint).toString());
       chunk.push({
         turn_id: `imessage:${r.message_guid ?? String(r.row_id)}`,
         thread_id: r.chat_guid,
         from_handle: fromHandle,
         occurred_at: occurredAt,
-        text: decodeMessageText(r.text, r.attributed_body),
+        text: decodedText,
         participants: Array.from(new Set(allParticipants)),
+        ...(links && links.length ? { links } : {}),
+        ...(atts && atts.length ? { attachments: atts } : {}),
       });
       if (chunk.length >= opts.chunkSize) {
         yield chunk;

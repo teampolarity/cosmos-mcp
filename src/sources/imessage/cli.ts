@@ -61,10 +61,16 @@ interface SyncFlags {
 }
 
 async function runSync(flags: SyncFlags): Promise<number> {
+  // Prefer the cached token file (mint via `cosmos-mcp init`). COSMOS_TOKEN
+  // and COSMOS_MCP_KEY env vars are honored for CI / scripted use. The
+  // priority order matches what the MCP server itself uses, so a single
+  // bootstrap covers both stdio and CLI subcommands.
   const apiBase = process.env.COSMOS_URL || "https://cosmos.polarity-lab.com";
-  const token = process.env.COSMOS_TOKEN;
+  const { loadConfig, UNCONFIGURED_MESSAGE } = await import("../../config.js");
+  const cfg = loadConfig();
+  const token = process.env.COSMOS_TOKEN || cfg?.authToken || "";
   if (!token) {
-    process.stderr.write("error: COSMOS_TOKEN env var not set.\n");
+    process.stderr.write(`error: ${UNCONFIGURED_MESSAGE}\n`);
     return 1;
   }
   const statePath = defaultPath();

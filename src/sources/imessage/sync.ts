@@ -88,6 +88,12 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
         // runs observation extraction over the transcript. Older syncs
         // were metadata-only; existing turn rows backfill text in place.
         text: t.text,
+        // Links extracted from the message body, and attachment metadata
+        // (photo / video / audio / pdf / sticker / link / file). The
+        // extractor folds these into the transcript so the LLM can see
+        // "[photo: IMG_4823.jpg, 2.1MB]" or "[link: https://...]" inline.
+        ...(t.links && t.links.length ? { links: t.links } : {}),
+        ...(t.attachments && t.attachments.length ? { attachments: t.attachments } : {}),
       }));
       const res = await f(`${opts.apiBase}/api/me/connectors/conversations/turns`, {
         method: "POST",

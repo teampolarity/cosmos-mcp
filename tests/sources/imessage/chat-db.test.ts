@@ -34,6 +34,14 @@ beforeAll(() => {
     );
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
     CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+    CREATE TABLE attachment (
+      ROWID INTEGER PRIMARY KEY,
+      transfer_name TEXT,
+      mime_type TEXT,
+      total_bytes INTEGER,
+      is_sticker INTEGER
+    );
+    CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER);
   `);
 
   // Two real relationships (each handle gets 5+ incoming turns so it
@@ -148,5 +156,27 @@ describe("chat-db.readTurns", () => {
     expect(threadIds.has("iMessage;-;62227")).toBe(false);
     expect(threadIds.has("iMessage;-;+13035550144")).toBe(false);
     expect(threadIds.size).toBe(2);
+  });
+
+  it("attaches photo + url metadata when present", async () => {
+    // Mutate the fixture mid-test: add an attachment to one existing
+    // message and a URL to another, then verify both surface on the
+    // corresponding turn.
+    const fixture = new Database(TMP);
+    fixture.prepare(`INSERT INTO attachment (ROWID, transfer_name, mime_type, total_bytes, is_sticker) VALUES (1, 'IMG_4823.jpg', 'image/jpeg', 2100000, 0)`).run();
+    fixture.prepare(`INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (1, 1)`).run();
+    fixture.prepare(`UPDATE message SET text = 'check this https://anthropic.com/claude.' WHERE ROWID = 2`).run();
+    fixture.close();
+
+    const turns: any[] = [];
+    for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 100 })) {
+      turns.push(...chunk);
+    }
+    const withPhoto = turns.find((t) => t.turn_id.endsWith('m-c1-0'));
+    expect(withPhoto?.attachments).toEqual([
+      { kind: 'photo', filename: 'IMG_4823.jpg', mime: 'image/jpeg', bytes: 2100000 },
+    ]);
+    const withLink = turns.find((t) => t.turn_id.endsWith('m-c1-1'));
+    expect(withLink?.links).toEqual(['https://anthropic.com/claude']);
   });
 });
