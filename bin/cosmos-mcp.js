@@ -21,12 +21,14 @@ const DEFAULT_COSMOS_URL = process.env.COSMOS_BASE_URL || process.env.COSMOS_URL
 // Subcommands that must NOT auto-resolve a key (they either set it or do not
 // need it). Everything else gets a key resolved into process.env.COSMOS_TOKEN
 // before dispatch, so the existing compiled subcommands keep working unchanged.
-const NO_KEY_SUBS = new Set(["provision", "install-handler", "--help", "-h", "help", "--version", "-v"]);
+const NO_KEY_SUBS = new Set(["provision", "install-handler", "daemon", "--help", "-h", "help", "--version", "-v"]);
 
 if (maybeSub === "provision") {
   process.exit(await runProvision(maybeSubSub, rest));
 } else if (maybeSub === "install-handler") {
   process.exit(await runInstallHandler());
+} else if (maybeSub === "daemon") {
+  process.exit(await runDaemon(maybeSubSub, rest));
 } else if (maybeSub === "imessage" && maybeSubSub === "probe") {
   process.exit(await runImessageProbe());
 } else if (maybeSub === "imessage" && maybeSubSub === "caption") {
@@ -67,24 +69,37 @@ if (maybeSub === "provision") {
 //   1. COSMOS_TOKEN env (CI / power users)
 //   2. COSMOS_MCP_KEY env (back-compat with existing config.ts)
 //   3. macOS keychain (security find-generic-password)
+//   4. legacy token file at ~/.config/cosmos-mcp/token (older installs)
 // Returns the trimmed key string or null. Never throws.
 function resolveKey() {
   const envTok = (process.env.COSMOS_TOKEN || "").trim();
   if (envTok) return envTok;
   const envMcp = (process.env.COSMOS_MCP_KEY || "").trim();
   if (envMcp) return envMcp;
-  if (platform() !== "darwin") return null;
-  try {
-    const out = execFileSync(
-      "security",
-      ["find-generic-password", "-a", KEYCHAIN_ACCOUNT, "-s", KEYCHAIN_SERVICE, "-w"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    );
-    const trimmed = (out || "").trim();
-    return trimmed || null;
-  } catch {
-    return null;
+  if (platform() === "darwin") {
+    try {
+      const out = execFileSync(
+        "security",
+        ["find-generic-password", "-a", KEYCHAIN_ACCOUNT, "-s", KEYCHAIN_SERVICE, "-w"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const trimmed = (out || "").trim();
+      if (trimmed) return trimmed;
+    } catch {
+      /* fall through to file */
+    }
   }
+  try {
+    const tokenFile = join(homedir(), ".config", "cosmos-mcp", "token");
+    if (existsSync(tokenFile)) {
+      const parsed = JSON.parse(readFileSync(tokenFile, "utf8"));
+      const k = (parsed?.key || "").trim();
+      if (k) return k;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 // Hydrate process.env.COSMOS_TOKEN from the resolved key so downstream compiled
@@ -328,6 +343,201 @@ fi
 
   process.stdout.write(`handler installed at ${appDir}\n`);
   process.stdout.write("tap a cosmos-mcp:// link to test.\n");
+  return 0;
+}
+
+// ----- daemon ----------------------------------------------------------------
+// Background sync. `cosmos-mcp daemon install` drops a LaunchAgent plist that
+// runs `cosmos-mcp browser sync && cosmos-mcp imessage sync && cosmos-mcp
+// calendar sync` every 4 hours (and once on login). Logs go to
+// ~/Library/Logs/cosmos-mcp/. The runner script is generated fresh on each
+// install so it always points at the npx invocation; the plist points at
+// the runner script, not at npx directly, so the user can read what is
+// being run and so we can extend it later without bumping the agent label.
+
+async function runDaemon(sub, _rest) {
+  const DAEMON_LABEL = "com.polaritylab.cosmos-mcp.sync";
+  const DAEMON_INTERVAL_SECONDS = 4 * 60 * 60; // 4h
+  if (platform() !== "darwin") {
+    process.stderr.write(
+      "daemon is macOS-only (it uses launchd). on other platforms, schedule\n" +
+        "  npx -y @polarity-lab/cosmos-mcp browser sync\n" +
+        "  npx -y @polarity-lab/cosmos-mcp imessage sync\n" +
+        "  npx -y @polarity-lab/cosmos-mcp calendar sync\n" +
+        "via cron or systemd-timer instead.\n",
+    );
+    return 1;
+  }
+
+  const action = (sub || "install").trim();
+  const agentsDir = join(homedir(), "Library", "LaunchAgents");
+  const plistPath = join(agentsDir, `${DAEMON_LABEL}.plist`);
+  const runnerDir = join(homedir(), "Library", "Application Support", "cosmos-mcp");
+  const runnerPath = join(runnerDir, "daemon-run.sh");
+  const logDir = join(homedir(), "Library", "Logs", "cosmos-mcp");
+  const logPath = join(logDir, "daemon.log");
+  const errPath = join(logDir, "daemon.err.log");
+
+  if (action === "status") {
+    const installed = existsSync(plistPath);
+    process.stdout.write(`plist: ${installed ? plistPath : "(not installed)"}\n`);
+    if (installed) {
+      process.stdout.write(`runner: ${existsSync(runnerPath) ? runnerPath : "(missing!)"}\n`);
+      process.stdout.write(`log:    ${logPath}\n`);
+      process.stdout.write(`err:    ${errPath}\n`);
+      // launchctl list filters by label substring; grep the label.
+      const r = spawnSync("/bin/launchctl", ["list", DAEMON_LABEL], { encoding: "utf8" });
+      if (r.status === 0) {
+        process.stdout.write(`loaded: yes\n${r.stdout}`);
+      } else {
+        process.stdout.write("loaded: no (run `cosmos-mcp daemon install` to load)\n");
+      }
+    }
+    return 0;
+  }
+
+  if (action === "uninstall") {
+    // unload first; ignore "not loaded" errors.
+    spawnSync("/bin/launchctl", ["unload", plistPath], { stdio: "ignore" });
+    try {
+      if (existsSync(plistPath)) {
+        // best-effort remove
+        execFileSync("/bin/rm", ["-f", plistPath], { stdio: "ignore" });
+      }
+      if (existsSync(runnerPath)) {
+        execFileSync("/bin/rm", ["-f", runnerPath], { stdio: "ignore" });
+      }
+    } catch {
+      /* non-fatal */
+    }
+    process.stdout.write(`uninstalled ${DAEMON_LABEL}\n`);
+    return 0;
+  }
+
+  if (action !== "install") {
+    process.stderr.write("usage: cosmos-mcp daemon <install|uninstall|status>\n");
+    return 1;
+  }
+
+  // Resolve npx so the runner script does not depend on the user's PATH at
+  // launchd-fire time. launchd inherits a sparse env; not all users have
+  // node on the default launchd PATH. Falls back to a search.
+  const npxCandidates = [
+    "/opt/homebrew/bin/npx",
+    "/usr/local/bin/npx",
+  ];
+  const homeNvm = join(homedir(), ".nvm", "versions", "node");
+  if (existsSync(homeNvm)) {
+    try {
+      const versions = execFileSync("/bin/ls", [homeNvm], { encoding: "utf8" })
+        .split("\n").filter(Boolean).sort();
+      const newest = versions[versions.length - 1];
+      if (newest) npxCandidates.push(join(homeNvm, newest, "bin", "npx"));
+    } catch {
+      /* skip */
+    }
+  }
+  const npxPath = npxCandidates.find((p) => existsSync(p)) || "/usr/local/bin/npx";
+
+  // The runner. Each source runs sequentially; failures are logged but do
+  // not abort the next source. `imessage probe` first so a missing chat.db
+  // / Full Disk Access yields a clear log line instead of a crash.
+  const runner = `#!/bin/bash
+# cosmos-mcp daemon runner. Invoked by launchd every ${Math.round(DAEMON_INTERVAL_SECONDS / 60)} minutes.
+# Each source is best-effort; one failing source does not block the others.
+set -u
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+ts() { /bin/date "+%Y-%m-%dT%H:%M:%S%z"; }
+
+echo "[$(ts)] daemon tick start"
+
+# iMessage. The probe is informational; do not gate the sync on it.
+"${npxPath}" -y @polarity-lab/cosmos-mcp imessage sync 2>&1 \\
+  | /usr/bin/sed "s/^/[imessage] /"
+IMESSAGE_STATUS=\${PIPESTATUS[0]}
+echo "[$(ts)] imessage exit=$IMESSAGE_STATUS"
+
+# Browser history.
+"${npxPath}" -y @polarity-lab/cosmos-mcp browser sync 2>&1 \\
+  | /usr/bin/sed "s/^/[browser] /"
+BROWSER_STATUS=\${PIPESTATUS[0]}
+echo "[$(ts)] browser exit=$BROWSER_STATUS"
+
+# Calendar.
+"${npxPath}" -y @polarity-lab/cosmos-mcp calendar sync 2>&1 \\
+  | /usr/bin/sed "s/^/[calendar] /"
+CALENDAR_STATUS=\${PIPESTATUS[0]}
+echo "[$(ts)] calendar exit=$CALENDAR_STATUS"
+
+echo "[$(ts)] daemon tick done"
+`;
+
+  // The plist. KeepAlive=false means a single run per StartInterval. RunAtLoad
+  // gives a sync within seconds of `launchctl load` so the user does not wait
+  // 4h to see the first run.
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${DAEMON_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>${runnerPath}</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>${DAEMON_INTERVAL_SECONDS}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${logPath}</string>
+  <key>StandardErrorPath</key>
+  <string>${errPath}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
+`;
+
+  try {
+    mkdirSync(agentsDir, { recursive: true });
+    mkdirSync(runnerDir, { recursive: true });
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(runnerPath, runner);
+    chmodSync(runnerPath, 0o755);
+    writeFileSync(plistPath, plist);
+  } catch (e) {
+    process.stderr.write(`could not write daemon files. ${(e && e.message) || e}\n`);
+    return 1;
+  }
+
+  // Reload: unload first (ignore "not loaded") so a re-install picks up
+  // edits to runner/plist. Then load. Then `kickstart` to fire one tick
+  // immediately and surface any error inline.
+  spawnSync("/bin/launchctl", ["unload", plistPath], { stdio: "ignore" });
+  const loadRes = spawnSync("/bin/launchctl", ["load", plistPath], { encoding: "utf8" });
+  if (loadRes.status !== 0) {
+    process.stderr.write(`launchctl load failed: ${(loadRes.stderr || "").trim()}\n`);
+    return 1;
+  }
+  // `kickstart` forces an immediate run regardless of StartInterval.
+  // `gui/<uid>/<label>` is the modern domain target.
+  let uid = "";
+  try { uid = execFileSync("/usr/bin/id", ["-u"], { encoding: "utf8" }).trim(); } catch { /* skip */ }
+  if (uid) {
+    spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid}/${DAEMON_LABEL}`], { stdio: "ignore" });
+  }
+
+  process.stdout.write(`daemon installed at ${plistPath}\n`);
+  process.stdout.write(`runner: ${runnerPath}\n`);
+  process.stdout.write(`logs:   ${logPath}\n`);
+  process.stdout.write(`runs every ${Math.round(DAEMON_INTERVAL_SECONDS / 60)} minutes. first tick fired now.\n`);
+  process.stdout.write(`tail -f "${logPath}" to watch.\n`);
   return 0;
 }
 
