@@ -1,0 +1,61 @@
+# Smithery server card. Drives the listing at
+# https://smithery.ai/servers/team-z0u5/cosmos-mcp (or wherever this
+# server ends up published). Description, tools, and config schema
+# all come from this file.
+
+displayName: cosmos
+description: Personal knowledge graph every MCP client reads from and writes to. Account-keyed, portable .polarity file, same graph across Claude, Cursor, Codex, Zed.
+homepage: https://mcp.polarity-lab.com
+repository: https://github.com/teampolarity/cosmos-mcp
+license: MIT
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - cosmosToken
+    properties:
+      cosmosToken:
+        type: string
+        title: Cosmos MCP key
+        description: A pmk_ key from https://cosmos.polarity-lab.com/connectors. Optional on macOS once the system keychain is provisioned via `npx -y @polarity-lab/cosmos-mcp provision pmk_...`.
+        format: password
+      cosmosUrl:
+        type: string
+        title: Cosmos backend URL
+        description: Override the default backend (cosmos.polarity-lab.com) to point at a self-hosted instance.
+        default: https://cosmos.polarity-lab.com
+  commandFunction: |-
+    (config) => ({
+      command: "npx",
+      args: ["-y", "@polarity-lab/cosmos-mcp"],
+      env: {
+        COSMOS_TOKEN: config.cosmosToken,
+        COSMOS_URL: config.cosmosUrl || "https://cosmos.polarity-lab.com"
+      }
+    })
+
+tools:
+  - name: polarity_observe
+    description: Record an observation about the user into the graph.
+  - name: polarity_ask
+    description: Ask the graph a natural-language question.
+  - name: polarity_capture_turn
+    description: Capture a single conversation turn for later consolidation.
+  - name: polarity_record_event
+    description: Record a discrete event with timestamp and metadata.
+  - name: polarity_record_preference
+    description: Record a stable preference.
+  - name: polarity_dump
+    description: Dump the user's graph for inspection.
+  - name: polarity_checkin
+    description: Lightweight wake signal that lets the graph tighten its schedule.
+  - name: polarity_declare
+    description: Declare a structured fact directly into the graph.
+  - name: polarity_whoami
+    description: Return who the graph thinks you are.
+  - name: polarity_export
+    description: Export the graph as a portable .polarity file.
+  - name: polarity_get_graph
+    description: Return the raw graph for a given scope.
