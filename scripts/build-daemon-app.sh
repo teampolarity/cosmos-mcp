@@ -4,10 +4,10 @@
 # Connect API .p8 key. See docs/handoff_2026-05-19_daemon_app_bundle.md.
 set -euo pipefail
 
-SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Polarity Lab (REPLACE_TEAM_ID)}"
-NOTARY_KEY_PATH="${NOTARY_KEY_PATH:-$HOME/projects/blueno-ios/.secrets/AuthKey_NCU5AG34VV.p8}"
-NOTARY_KEY_ID="${NOTARY_KEY_ID:-NCU5AG34VV}"
-NOTARY_ISSUER_ID="${NOTARY_ISSUER_ID:-REPLACE_ISSUER_UUID}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Theodore Addo (SA5F7PACJE)}"
+NOTARY_KEY_PATH="${NOTARY_KEY_PATH:-$HOME/projects/blueno-ios/.secrets/AuthKey_8F38V68Y2K.p8}"
+NOTARY_KEY_ID="${NOTARY_KEY_ID:-8F38V68Y2K}"
+NOTARY_ISSUER_ID="${NOTARY_ISSUER_ID:-9e78df19-ca2e-444f-8726-3749a32e55db}"
 
 APP_NAME="Cosmos Sync"
 BUNDLE_ID="com.polaritylab.cosmos-mcp-daemon"
