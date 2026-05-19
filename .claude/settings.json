@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test)",
+      "Bash(npm version *)",
+      "Bash(npm publish *)",
+      "Bash(npm install *)",
+      "Bash(npm ci)",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(node bin/cosmos-mcp.js *)",
+      "Bash(node dist/server.js)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push)",
+      "Bash(git push origin *)",
+      "Bash(git tag *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(gh pr *)",
+      "Bash(gh release *)",
+      "Bash(curl -s *)",
+      "Bash(curl -sI *)",
+      "Bash(security find-generic-password *)",
+      "Bash(grep *)",
+      "Bash(find ./src *)",
+      "Bash(find ./bin *)",
+      "Bash(find ./tests *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(wc *)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "WebFetch(domain:glama.ai)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:registry.npmjs.org)"
+    ],
+    "ask": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(npm publish *)",
+      "Bash(security delete-generic-password *)"
+    ]
+  }
+}

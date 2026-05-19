@@ -6,5 +6,6 @@ dist/
 .env.local
 .env.*.local
 .npmrc
+.mcpregistry_*_token
 *.tsbuildinfo
 coverage/
