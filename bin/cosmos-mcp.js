@@ -56,6 +56,16 @@ if (maybeSub === "provision") {
   const { runCalendarCli } = await import("../dist/sources/calendar/cli.js");
   const code = await runCalendarCli([maybeSubSub, ...rest].filter(Boolean));
   process.exit(code);
+} else if (maybeSub === "claude-desktop") {
+  await ensureKeyOrExit(maybeSub);
+  const { runClaudeDesktopCli } = await import("../dist/sources/claude-desktop/cli.js");
+  const code = await runClaudeDesktopCli([maybeSubSub, ...rest].filter(Boolean));
+  process.exit(code);
+} else if (maybeSub === "shell-history") {
+  await ensureKeyOrExit(maybeSub);
+  const { runShellHistoryCli } = await import("../dist/sources/shell-history/cli.js");
+  const code = await runShellHistoryCli([maybeSubSub, ...rest].filter(Boolean));
+  process.exit(code);
 } else if (maybeSub === "init") {
   // init has its own browser-OAuth bootstrap; let it run with whatever key
   // state exists, but do not block on key resolution.
@@ -558,6 +568,18 @@ echo "[$(ts)] browser exit=$BROWSER_STATUS"
   | /usr/bin/sed "s/^/[calendar] /"
 CALENDAR_STATUS=\${PIPESTATUS[0]}
 echo "[$(ts)] calendar exit=$CALENDAR_STATUS"
+
+# Claude Desktop (Claude Code session transcripts at ~/.claude/projects/).
+"${npxPath}" -y @polarity-lab/cosmos-mcp claude-desktop sync 2>&1 \\
+  | /usr/bin/sed "s/^/[claude-desktop] /"
+CLAUDE_STATUS=\${PIPESTATUS[0]}
+echo "[$(ts)] claude-desktop exit=$CLAUDE_STATUS"
+
+# Shell history (zsh/bash/fish).
+"${npxPath}" -y @polarity-lab/cosmos-mcp shell-history sync 2>&1 \\
+  | /usr/bin/sed "s/^/[shell-history] /"
+SHELL_STATUS=\${PIPESTATUS[0]}
+echo "[$(ts)] shell-history exit=$SHELL_STATUS"
 
 echo "[$(ts)] daemon tick done"
 `;

@@ -109,6 +109,8 @@ The MCP server is one way to write to the graph. Cosmos accepts source pages fro
 | Source | How it connects | What lands |
 |---|---|---|
 | **iMessage** | Local CLI: `npx -y @polarity-lab/cosmos-mcp imessage sync`. Mac only. Grant Terminal Full Disk Access first. | Conversational turns from `chat.db`, with text content. People appear as person nodes in your graph, sized by conversation weight, named via your local AddressBook, dated by your real message timestamps. |
+| **Claude Desktop** | Local CLI: `npx -y @polarity-lab/cosmos-mcp claude-desktop sync`. Reads Claude Code session transcripts at `~/.claude/projects/`. | Every Claude Code session becomes a thread node; user and assistant turns land in `conversation_turns` with full text. Tool-use plumbing is stripped client-side. |
+| **Shell history** | Local CLI: `npx -y @polarity-lab/cosmos-mcp shell-history sync`. Reads `~/.zsh_history` (falls back to bash/fish) with a byte-offset watermark. | Each sync window lands as one `source_page` keyed by `shell-history:<sync-iso>`, body = newline-joined commands. Trivial commands (`ls`, `cd ..`, single chars) and consecutive duplicates are filtered client-side. |
 | **Notion** | OAuth at [cosmos.polarity-lab.com/connectors](https://cosmos.polarity-lab.com/connectors). Pick the pages and databases you want shared. | Each Notion page becomes a `source_page` node, keyed by Notion id, kept fresh by a daily sync. |
 | **Obsidian** | Community plugin: [polarity-lab/obsidian-cosmos](https://github.com/teampolarity/obsidian-cosmos). Paste your `pmk_` key, point at your vault. | Each note becomes a `source_page` node keyed by vault-relative path. Tags and wikilinks resolve into edges. |
 | **MCP clients** | This package. | Observations, events, preferences, location dumps, check-ins, declarations. |
@@ -136,9 +138,29 @@ npx -y @polarity-lab/cosmos-mcp imessage status
 
 A three-rule slop filter (no-reply senders, short-code numbers, low-volume contacts) keeps the graph clean. Your AddressBook resolves phone numbers and emails into real contact names. The reading is local to your Mac; only the extracted, normalized turns go into your cosmos graph, which is your account.
 
+### Claude Desktop sync
+
+`cosmos-mcp` ships a `claude-desktop` subcommand that watches Claude Code session transcripts and lands each turn in your graph. The desktop chat surface itself stores conversations server-side, so the live, watchable on-disk source is `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`.
+
+```bash
+# default: incremental, watermarked per session
+npx -y @polarity-lab/cosmos-mcp claude-desktop sync
+
+# limit to recent activity
+npx -y @polarity-lab/cosmos-mcp claude-desktop sync --since 2026-05-01
+
+# scan and report without shipping
+npx -y @polarity-lab/cosmos-mcp claude-desktop sync --dry-run
+
+# see what the last run did
+npx -y @polarity-lab/cosmos-mcp claude-desktop status
+```
+
+Tool-use blocks, hook plumbing, and sub-agent (sidechain) turns are stripped client-side; only the visible text the user and the assistant exchanged is shipped. Each session id becomes its own thread node, keyed by `(user_id, "claude-desktop", session_id)`.
+
 ### Background sync (macOS)
 
-`cosmos-mcp daemon install` drops a LaunchAgent that ticks every four hours and runs the browser, iMessage, and calendar syncs back-to-back. The agent fires a signed, notarized `Cosmos Sync.app` bundle that ships inside the npm package and gets copied into `~/Applications/Cosmos Sync.app` at install time.
+`cosmos-mcp daemon install` drops a LaunchAgent that ticks every four hours and runs the browser, iMessage, calendar, claude-desktop, and shell-history syncs back-to-back. The agent fires a signed, notarized `Cosmos Sync.app` bundle that ships inside the npm package and gets copied into `~/Applications/Cosmos Sync.app` at install time.
 
 ```bash
 npx -y @polarity-lab/cosmos-mcp daemon install
