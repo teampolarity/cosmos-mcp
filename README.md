@@ -136,6 +136,23 @@ npx -y @polarity-lab/cosmos-mcp imessage status
 
 A three-rule slop filter (no-reply senders, short-code numbers, low-volume contacts) keeps the graph clean. Your AddressBook resolves phone numbers and emails into real contact names. The reading is local to your Mac; only the extracted, normalized turns go into your cosmos graph, which is your account.
 
+### Background sync (macOS)
+
+`cosmos-mcp daemon install` drops a LaunchAgent that ticks every four hours and runs the browser, iMessage, and calendar syncs back-to-back. The agent fires a signed, notarized `Cosmos Sync.app` bundle that ships inside the npm package and gets copied into `~/Applications/Cosmos Sync.app` at install time.
+
+```bash
+npx -y @polarity-lab/cosmos-mcp daemon install
+```
+
+After install, grant the bundle Full Disk Access once:
+
+1. open System Settings → Privacy & Security → Full Disk Access
+2. click +, then drag `~/Applications/Cosmos Sync.app` into the list
+3. make sure the checkbox next to it is on
+4. run `cosmos-mcp daemon kick` to fire a tick now
+
+Browser sync works without that step. iMessage and Calendar need it because they read TCC-protected SQLite databases on the user side. `cosmos-mcp daemon status` reports the signing team id, the plist + runner paths, and whether launchd has the agent loaded. `cosmos-mcp daemon uninstall` removes the plist, runner, and `~/Applications/Cosmos Sync.app`.
+
 ## Configuration
 
 | Env var | Default | When you set it |

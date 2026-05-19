@@ -10,7 +10,12 @@
 import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, chmodSync, readFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PACKAGE_ROOT = join(__dirname, "..");
 
 const [, , maybeSub, maybeSubSub, ...rest] = process.argv;
 
@@ -378,13 +383,55 @@ async function runDaemon(sub, _rest) {
   const logPath = join(logDir, "daemon.log");
   const errPath = join(logDir, "daemon.err.log");
 
+  // The signed + notarized .app bundle that launchd actually fires.
+  // Shipped inside the npm package at dist/CosmosSync.app/, copied into
+  // ~/Applications on `install` so the user has a stable target to add
+  // to Full Disk Access in System Settings.
+  const userAppsDir = join(homedir(), "Applications");
+  const installedAppPath = join(userAppsDir, "Cosmos Sync.app");
+  const installedAppExec = join(installedAppPath, "Contents", "MacOS", "cosmos-sync");
+  const packagedAppPath = join(PACKAGE_ROOT, "dist", "CosmosSync.app");
+
+  if (action === "kick") {
+    let uid = "";
+    try { uid = execFileSync("/usr/bin/id", ["-u"], { encoding: "utf8" }).trim(); } catch { /* skip */ }
+    if (!uid) {
+      process.stderr.write("could not resolve uid; cannot kickstart.\n");
+      return 1;
+    }
+    const r = spawnSync(
+      "/bin/launchctl",
+      ["kickstart", "-k", `gui/${uid}/${DAEMON_LABEL}`],
+      { encoding: "utf8" },
+    );
+    if (r.status !== 0) {
+      process.stderr.write(`launchctl kickstart failed: ${(r.stderr || "").trim()}\n`);
+      return 1;
+    }
+    process.stdout.write(`kicked ${DAEMON_LABEL}. tail -f "${logPath}" to watch.\n`);
+    return 0;
+  }
+
   if (action === "status") {
     const installed = existsSync(plistPath);
     process.stdout.write(`plist: ${installed ? plistPath : "(not installed)"}\n`);
     if (installed) {
       process.stdout.write(`runner: ${existsSync(runnerPath) ? runnerPath : "(missing!)"}\n`);
+      process.stdout.write(`app:    ${existsSync(installedAppPath) ? installedAppPath : "(missing!)"}\n`);
       process.stdout.write(`log:    ${logPath}\n`);
       process.stdout.write(`err:    ${errPath}\n`);
+      // Report code signing team id so the user can verify they're running
+      // the signed build (and not a stale unsigned dev copy).
+      if (existsSync(installedAppPath)) {
+        const cs = spawnSync(
+          "/usr/bin/codesign",
+          ["-dv", installedAppPath],
+          { encoding: "utf8" },
+        );
+        const csOut = `${cs.stdout || ""}${cs.stderr || ""}`;
+        const teamLine = csOut.split("\n").find((l) => l.includes("TeamIdentifier"));
+        process.stdout.write(`signed: ${teamLine ? teamLine.trim() : "(no signature)"}\n`);
+      }
       // launchctl list filters by label substring; grep the label.
       const r = spawnSync("/bin/launchctl", ["list", DAEMON_LABEL], { encoding: "utf8" });
       if (r.status === 0) {
@@ -407,17 +454,59 @@ async function runDaemon(sub, _rest) {
       if (existsSync(runnerPath)) {
         execFileSync("/bin/rm", ["-f", runnerPath], { stdio: "ignore" });
       }
+      if (existsSync(installedAppPath)) {
+        execFileSync("/bin/rm", ["-rf", installedAppPath], { stdio: "ignore" });
+      }
     } catch {
       /* non-fatal */
     }
     process.stdout.write(`uninstalled ${DAEMON_LABEL}\n`);
+    process.stdout.write(
+      "remove the FDA grant manually in System Settings → Privacy & Security → Full Disk Access if you want.\n",
+    );
     return 0;
   }
 
   if (action !== "install") {
-    process.stderr.write("usage: cosmos-mcp daemon <install|uninstall|status>\n");
+    process.stderr.write("usage: cosmos-mcp daemon <install|uninstall|status|kick>\n");
     return 1;
   }
+
+  // Verify the shipped .app exists in the package. Built by
+  // scripts/build-daemon-app.sh and committed into dist/ before publish.
+  if (!existsSync(packagedAppPath)) {
+    process.stderr.write(
+      `cosmos sync .app missing from this install at:\n  ${packagedAppPath}\n` +
+        "you are likely running a local dev checkout without a built bundle.\n" +
+        "build it with: bash scripts/build-daemon-app.sh\n",
+    );
+    return 1;
+  }
+
+  // Copy the .app into ~/Applications. We use cp -R so the bundle's bit-
+  // for-bit signature stays intact (rsync's default mode rewrites metadata
+  // and breaks the codesign seal). Replace any existing copy.
+  try {
+    mkdirSync(userAppsDir, { recursive: true });
+    if (existsSync(installedAppPath)) {
+      execFileSync("/bin/rm", ["-rf", installedAppPath], { stdio: "ignore" });
+    }
+    execFileSync("/bin/cp", ["-R", packagedAppPath, installedAppPath], { stdio: "ignore" });
+    // npm sometimes strips the executable bit on nested binaries inside
+    // tarballs. Re-assert it so launchd can fire the bundle.
+    if (existsSync(installedAppExec)) {
+      chmodSync(installedAppExec, 0o755);
+    }
+  } catch (e) {
+    process.stderr.write(`could not stage Cosmos Sync.app. ${(e && e.message) || e}\n`);
+    return 1;
+  }
+
+  // Register the bundle with Launch Services so its TCC identity is known
+  // before launchd fires it. lsregister is buried but stable.
+  const lsregister =
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+  spawnSync(lsregister, ["-f", installedAppPath], { stdio: "ignore" });
 
   // Resolve npx so the runner script does not depend on the user's PATH at
   // launchd-fire time. launchd inherits a sparse env; not all users have
@@ -484,8 +573,7 @@ echo "[$(ts)] daemon tick done"
   <string>${DAEMON_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>${runnerPath}</string>
+    <string>${installedAppExec}</string>
   </array>
   <key>StartInterval</key>
   <integer>${DAEMON_INTERVAL_SECONDS}</integer>
@@ -533,11 +621,14 @@ echo "[$(ts)] daemon tick done"
     spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid}/${DAEMON_LABEL}`], { stdio: "ignore" });
   }
 
-  process.stdout.write(`daemon installed at ${plistPath}\n`);
-  process.stdout.write(`runner: ${runnerPath}\n`);
-  process.stdout.write(`logs:   ${logPath}\n`);
-  process.stdout.write(`runs every ${Math.round(DAEMON_INTERVAL_SECONDS / 60)} minutes. first tick fired now.\n`);
-  process.stdout.write(`tail -f "${logPath}" to watch.\n`);
+  process.stdout.write("cosmos sync daemon installed.\n\n");
+  process.stdout.write("one manual step on macOS to enable iMessage + calendar:\n");
+  process.stdout.write("  1. open System Settings → Privacy & Security → Full Disk Access\n");
+  process.stdout.write("  2. click +, then drag \"~/Applications/Cosmos Sync.app\" into the list\n");
+  process.stdout.write("  3. make sure the checkbox next to it is on\n");
+  process.stdout.write("  4. run: cosmos-mcp daemon kick\n\n");
+  process.stdout.write("browser sync already works without that step. logs:\n");
+  process.stdout.write(`  tail -f "${logPath}"\n`);
   return 0;
 }
 
