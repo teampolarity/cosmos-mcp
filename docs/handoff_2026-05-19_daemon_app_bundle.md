@@ -2,6 +2,30 @@
 
 Self-contained brief. Date: 2026-05-19. A fresh agent or future-you can execute this without back-context.
 
+## Current status (2026-05-19 evening)
+
+Scaffolding is done and committed at [6baa341](https://github.com/teampolarity/cosmos-mcp/commit/6baa341). What landed:
+
+- `src/daemon/launcher.swift` — universal Swift launcher, verified compiles + execs `daemon-run.sh` correctly.
+- `scripts/build-daemon-app.sh` — full build/sign/notarize/staple pipeline, executable. `REPLACE_TEAM_ID` and `REPLACE_ISSUER_UUID` placeholders are the only two values left to fill in.
+- `bin/cosmos-mcp.js` `runDaemon()` rewritten: install copies `dist/CosmosSync.app` → `~/Applications/Cosmos Sync.app`, plist `ProgramArguments` points at the .app exec, `daemon kick` subcommand added, `daemon status` reports `TeamIdentifier` via `codesign -dv`, `daemon uninstall` removes the bundle.
+- `.github/workflows/build-daemon-app.yml` — runs on tag push or workflow_dispatch.
+- `README.md` "Background sync (macOS)" section added.
+- `package.json`, `package-lock.json`, `server.json` bumped to 0.6.0.
+
+What's blocked, and on whom:
+
+- The lab's Apple Developer account is still under Theo's personal Apple ID. Theo is transitioning it into the Polarity Lab team account. Until that transition completes, we can't mint a "Developer ID Application" cert under the lab name and we can't read the Issuer UUID from App Store Connect → Users and Access → Keys.
+- 0.6.0 is committed but **not published to npm**. Publishing now would ship a `daemon install` that fails with "Cosmos Sync.app missing from this install" for every new user. Live published version stays 0.5.0 until the .app is built and bundled.
+
+Next concrete steps once the transition finishes:
+
+1. Get the Issuer UUID from App Store Connect → Users and Access → Keys (top of page). Drop into `NOTARY_ISSUER_ID` in `scripts/build-daemon-app.sh:51` and into the `NOTARY_ISSUER_ID` CI secret.
+2. Generate a Developer ID Application cert from developer.apple.com → Certificates → Production. Install in `login.keychain`. Read the team id from the cert subject and drop into `SIGN_IDENTITY` in `build-daemon-app.sh:48` and the corresponding CI secret. Export the cert as `.p12` for the `DEV_ID_P12_BASE64` secret.
+3. Run `bash scripts/build-daemon-app.sh` locally for the first build, verify `dist/CosmosSync.app` is notarized + stapled, then `npm publish` 0.6.0 and `mcp-publisher publish`.
+4. On Shadrack's machine: `npx -y @polarity-lab/cosmos-mcp daemon install`, grant FDA to `~/Applications/Cosmos Sync.app`, `cosmos-mcp daemon kick`, watch `~/Library/Logs/cosmos-mcp/daemon.log` for iMessage + Calendar success lines (no EPERM).
+
+
 The goal is to get iMessage + Calendar syncs working under launchd by giving the daemon its own Apple-signed bundle id that the user adds to Full Disk Access. The current LaunchAgent invokes `/bin/bash`, which can't be FDA-granted without giving every script on the user's machine FDA — so iMessage and Calendar fail with EPERM every tick. Browser works because its readers snapshot-copy the SQLite DBs into `$TMPDIR`, dodging the TCC check.
 
 ## Current state (already shipped, don't redo)
