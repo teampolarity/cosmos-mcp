@@ -1,20 +1,33 @@
-// cosmos-mcp calendar sync — read the macOS Calendar.app sqlite DB
-// (which also mirrors any subscribed Google / Microsoft accounts) and
-// ship event aggregates to cosmos as `event` nodes.
+// cosmos-mcp calendar sync.
 //
-// One node per unique (summary, calendar). For recurring events that
-// fold into one row. Frequency, first-seen, last-seen, and the source
-// calendar travel in the node content so the synthesis can spot
-// rhythms ("you meet with Theo every Tuesday for the last six months"
-// is far more readable than 26 individual event rows).
+// Two readers, one aggregation path:
 //
-// Calendars that are pure noise (US Holidays, Birthdays, religious
-// observance feeds) are dropped client-side.
+//   EventKit  — spawns the signed `cosmos-eventkit` binary shipped in
+//               Cosmos Sync.app. Gives structured attendees (name +
+//               email), real recurrence flags, and the calendar's
+//               account type. Preferred.
+//   sqlite    — snapshot-copies Calendar.sqlitedb and reads it directly.
+//               Fallback for when the daemon .app is not installed.
+//               No attendee detail, no calendar type.
+//
+// Both readers emit NormalizedEvent[]. aggregate() folds occurrences of
+// the same (summary, calendar) into one row carrying frequency, the
+// first/last occurrence, and the union of everyone seen on it, so the
+// synthesis can read rhythms ("standup, 48 instances, with the same
+// four people") instead of hundreds of separate events.
+//
+// Calendars that are pure noise (holidays, birthdays, Siri-suggested)
+// are dropped client-side.
 
 import Database from "better-sqlite3";
 import { promises as fs } from "node:fs";
+import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
+
+const execFileP = promisify(execFile);
 
 const DEFAULT_WINDOW_DAYS = 365;
 const POST_BATCH_SIZE = 30;
@@ -42,27 +55,47 @@ const NOISE_CALENDARS = new Set([
   "found in natural language",
 ]);
 
-interface CalendarEventRow {
+interface Attendee {
+  name: string | null;
+  email: string | null;
+}
+
+// The shape both readers normalize to before aggregation.
+interface NormalizedEvent {
   summary: string;
-  description: string | null;
-  calendar_title: string;
-  start_date: number | null;
-  end_date: number | null;
-  all_day: number | null;
-  has_attendees: number | null;
-  has_recurrences: number | null;
-  uuid: string | null;
+  calendar: string;
+  calendar_type: string; // 'local' | 'caldav' | ... | 'unknown'
+  start: string; // ISO8601
+  has_attendees: boolean;
+  has_recurrences: boolean;
+  attendees: Attendee[];
 }
 
 interface CalendarAgg {
   summary: string;
   calendar: string;
+  calendar_type: string;
   count: number;
   first_at: string; // ISO8601
   last_at: string;
   has_attendees: boolean;
   has_recurrences: boolean;
-  uuid: string | null;
+  attendees: Attendee[]; // deduped union across occurrences
+}
+
+// Raw EventKit bridge output — one JSON object per stdout line.
+interface EventKitRow {
+  title: string;
+  calendar: string;
+  calendar_type: string;
+  start: string;
+  end: string | null;
+  all_day: boolean;
+  recurring: boolean;
+  has_notes: boolean;
+  location: string | null;
+  attendees: Attendee[];
+  organizer: Attendee | null;
 }
 
 interface SyncState {
@@ -94,15 +127,31 @@ export async function runCalendarCli(argv: string[]): Promise<number> {
 
   process.stdout.write(`cosmos · calendar sync · last ${state.windowDays}d${state.dryRun ? ' · DRY RUN' : ''}\n`);
 
-  const events = await readAppleCalendar(state.windowDays);
-  process.stdout.write(`  read ${events.length.toLocaleString()} events from Apple Calendar\n`);
+  // Prefer EventKit. Fall back to the sqlite reader if the daemon .app
+  // (and therefore the cosmos-eventkit binary) is not installed.
+  let events: NormalizedEvent[];
+  const ekBinary = findEventKitBinary();
+  if (ekBinary) {
+    process.stdout.write(`  reader: EventKit (${ekBinary})\n`);
+    const ek = await readViaEventKit(ekBinary, state.windowDays, state.verbose);
+    if (ek) {
+      events = ek;
+    } else {
+      process.stdout.write(`  EventKit read failed, falling back to sqlite\n`);
+      events = await readViaSqlite(state.windowDays);
+    }
+  } else {
+    process.stdout.write(`  reader: sqlite (daemon .app not installed)\n`);
+    events = await readViaSqlite(state.windowDays);
+  }
+  process.stdout.write(`  read ${events.length.toLocaleString()} event occurrences\n`);
 
   const aggs = aggregate(events);
   process.stdout.write(`  ${aggs.length.toLocaleString()} unique (event, calendar) pairs after noise-filter\n`);
 
   if (state.verbose) {
     for (const a of aggs.slice(0, 10)) {
-      process.stderr.write(`  ${a.count}× ${a.calendar} | ${a.summary.slice(0, 60)} | first=${a.first_at.slice(0,10)} last=${a.last_at.slice(0,10)}\n`);
+      process.stderr.write(`  ${a.count}× ${a.calendar} | ${a.summary.slice(0, 50)} | ${a.attendees.length} ppl\n`);
     }
   }
 
@@ -138,7 +187,68 @@ export async function runCalendarCli(argv: string[]): Promise<number> {
   return failed > 0 ? 1 : 0;
 }
 
-async function readAppleCalendar(windowDays: number): Promise<CalendarEventRow[]> {
+// ---- EventKit reader --------------------------------------------------------
+
+// The cosmos-eventkit binary lives inside the signed Cosmos Sync.app.
+// Prefer the installed copy — that is the one the user granted calendar
+// access to. /Applications is checked too in case the app was installed
+// system-wide instead of per-user.
+function findEventKitBinary(): string | null {
+  if (process.platform !== "darwin") return null;
+  const candidates = [
+    path.join(os.homedir(), "Applications", "Cosmos Sync.app", "Contents", "MacOS", "cosmos-eventkit"),
+    path.join("/Applications", "Cosmos Sync.app", "Contents", "MacOS", "cosmos-eventkit"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+// Spawn cosmos-eventkit and parse its NDJSON. Returns null on any
+// failure (access denied = exit 2, other error = exit 1) so the caller
+// can fall back to sqlite.
+async function readViaEventKit(
+  binPath: string,
+  windowDays: number,
+  verbose: boolean,
+): Promise<NormalizedEvent[] | null> {
+  try {
+    const { stdout, stderr } = await execFileP(
+      binPath,
+      ["--days", String(windowDays)],
+      { maxBuffer: 64 * 1024 * 1024, timeout: 120_000 },
+    );
+    if (verbose && stderr) process.stderr.write(`  [eventkit] ${stderr.trim()}\n`);
+    const out: NormalizedEvent[] = [];
+    for (const line of stdout.split("\n")) {
+      if (!line.trim()) continue;
+      let row: EventKitRow;
+      try { row = JSON.parse(line) as EventKitRow; } catch { continue; }
+      const attendees = (row.attendees || []).filter((a) => a && (a.email || a.name));
+      out.push({
+        summary: row.title || "",
+        calendar: row.calendar || "",
+        calendar_type: row.calendar_type || "unknown",
+        start: row.start,
+        has_attendees: attendees.length > 0,
+        has_recurrences: !!row.recurring,
+        attendees,
+      });
+    }
+    return out;
+  } catch (e) {
+    const err = e as { code?: number; stderr?: string };
+    if (verbose) {
+      process.stderr.write(`  [eventkit] failed (exit ${err.code ?? "?"})${err.stderr ? ": " + err.stderr.trim() : ""}\n`);
+    }
+    return null;
+  }
+}
+
+// ---- sqlite reader (fallback) -----------------------------------------------
+
+async function readViaSqlite(windowDays: number): Promise<NormalizedEvent[]> {
   const src = path.join(os.homedir(), "Library", "Group Containers", "group.com.apple.calendar", "Calendar.sqlitedb");
   const snap = path.join(os.tmpdir(), `cosmos-cal-${Date.now()}.sqlitedb`);
   await fs.copyFile(src, snap);
@@ -147,19 +257,14 @@ async function readAppleCalendar(windowDays: number): Promise<CalendarEventRow[]
   }
   const db = new Database(snap, { readonly: true, fileMustExist: true });
   try {
-    // Window: events whose start_date >= now - windowDays. Mac time.
     const sinceMac = (Date.now() / 1000 - windowDays * 86400) - MAC_EPOCH_OFFSET;
     const rows = db.prepare(`
       SELECT
         ci.summary AS summary,
-        ci.description AS description,
         c.title AS calendar_title,
         ci.start_date AS start_date,
-        ci.end_date AS end_date,
-        ci.all_day AS all_day,
         ci.has_attendees AS has_attendees,
-        ci.has_recurrences AS has_recurrences,
-        ci.UUID AS uuid
+        ci.has_recurrences AS has_recurrences
       FROM CalendarItem ci
       LEFT JOIN Calendar c ON c.ROWID = ci.calendar_id
       WHERE ci.summary IS NOT NULL
@@ -167,8 +272,22 @@ async function readAppleCalendar(windowDays: number): Promise<CalendarEventRow[]
         AND ci.start_date IS NOT NULL
         AND ci.start_date > ?
       ORDER BY ci.start_date DESC
-    `).all(sinceMac) as CalendarEventRow[];
-    return rows;
+    `).all(sinceMac) as Array<{
+      summary: string;
+      calendar_title: string | null;
+      start_date: number;
+      has_attendees: number | null;
+      has_recurrences: number | null;
+    }>;
+    return rows.map((r) => ({
+      summary: r.summary || "",
+      calendar: (r.calendar_title || "").trim(),
+      calendar_type: "unknown",
+      start: new Date((r.start_date + MAC_EPOCH_OFFSET) * 1000).toISOString(),
+      has_attendees: !!r.has_attendees,
+      has_recurrences: !!r.has_recurrences,
+      attendees: [],
+    }));
   } finally {
     db.close();
     try { await fs.unlink(snap); } catch {}
@@ -177,20 +296,20 @@ async function readAppleCalendar(windowDays: number): Promise<CalendarEventRow[]
   }
 }
 
-function aggregate(rows: CalendarEventRow[]): CalendarAgg[] {
+// ---- aggregation ------------------------------------------------------------
+
+function aggregate(events: NormalizedEvent[]): CalendarAgg[] {
   const map = new Map<string, CalendarAgg>();
-  for (const r of rows) {
-    const calTitle = (r.calendar_title || "").trim();
+  for (const e of events) {
+    const calTitle = (e.calendar || "").trim();
     if (NOISE_CALENDARS.has(calTitle.toLowerCase())) continue;
 
-    const summary = (r.summary || "").trim();
+    const summary = (e.summary || "").trim();
     if (!summary) continue;
-
-    // Skip obvious auto-generated entries (birthday placeholders etc).
     if (/^Birthday: /i.test(summary)) continue;
     if (/^Anniversary: /i.test(summary)) continue;
 
-    const start = r.start_date != null ? new Date((r.start_date + MAC_EPOCH_OFFSET) * 1000).toISOString() : "";
+    const start = e.start;
     if (!start) continue;
 
     const key = `${calTitle}::${summary.toLowerCase()}`;
@@ -198,20 +317,37 @@ function aggregate(rows: CalendarEventRow[]): CalendarAgg[] {
     if (!existing) {
       map.set(key, {
         summary, calendar: calTitle,
+        calendar_type: e.calendar_type || "unknown",
         count: 1, first_at: start, last_at: start,
-        has_attendees: !!r.has_attendees,
-        has_recurrences: !!r.has_recurrences,
-        uuid: r.uuid,
+        has_attendees: e.has_attendees,
+        has_recurrences: e.has_recurrences,
+        attendees: dedupeAttendees(e.attendees),
       });
     } else {
       existing.count += 1;
       if (start < existing.first_at) existing.first_at = start;
       if (start > existing.last_at) existing.last_at = start;
-      if (r.has_attendees) existing.has_attendees = true;
-      if (r.has_recurrences) existing.has_recurrences = true;
+      if (e.has_attendees) existing.has_attendees = true;
+      if (e.has_recurrences) existing.has_recurrences = true;
+      if (e.attendees.length) {
+        existing.attendees = dedupeAttendees([...existing.attendees, ...e.attendees]);
+      }
     }
   }
   return [...map.values()].sort((a, b) => b.last_at.localeCompare(a.last_at));
+}
+
+// Dedupe attendees by email (lowercased) when present, else by name.
+// Caps the list so one huge all-hands does not balloon the payload.
+function dedupeAttendees(list: Attendee[]): Attendee[] {
+  const seen = new Map<string, Attendee>();
+  for (const a of list) {
+    if (!a || (!a.email && !a.name)) continue;
+    const key = (a.email || a.name || "").trim().toLowerCase();
+    if (!key) continue;
+    if (!seen.has(key)) seen.set(key, { name: a.name ?? null, email: a.email ?? null });
+  }
+  return [...seen.values()].slice(0, 25);
 }
 
 function parseFlags(argv: string[]): { days: number; dryRun: boolean; verbose: boolean } {

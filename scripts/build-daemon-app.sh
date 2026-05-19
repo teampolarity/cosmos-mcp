@@ -36,7 +36,41 @@ lipo -create "$MACOS/cosmos-sync-arm64" "$MACOS/cosmos-sync-x86_64" \
 rm "$MACOS/cosmos-sync-arm64" "$MACOS/cosmos-sync-x86_64"
 chmod +x "$MACOS/cosmos-sync"
 
-# Info.plist. LSBackgroundOnly hides the Dock icon entirely.
+# cosmos-eventkit — the calendar reader. Standalone signed binary with an
+# embedded __info_plist section carrying the calendar usage strings, so
+# macOS shows a Calendars TCC prompt on first run and keys the grant on
+# this binary's designated requirement. Compiled universal like the
+# launcher. The macOS 14 EventKit symbols it uses are weak-linked behind
+# an `if #available` guard, so a macos11 deployment target is fine.
+EVENTKIT_PLIST="$(mktemp -t cosmos-eventkit-plist).plist"
+cat > "$EVENTKIT_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.polaritylab.cosmos-mcp-eventkit</string>
+  <key>CFBundleName</key><string>Cosmos Calendar Reader</string>
+  <key>CFBundleShortVersionString</key><string>${SHORT_VERSION}</string>
+  <key>NSCalendarsUsageDescription</key><string>Cosmos reads your calendar events to build your personal knowledge graph.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Cosmos reads your calendar events to build your personal knowledge graph.</string>
+</dict>
+</plist>
+EOF
+for ARCH in arm64 x86_64; do
+  swiftc -O \
+    -target "${ARCH}-apple-macos11" \
+    -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$EVENTKIT_PLIST" \
+    -o "$MACOS/cosmos-eventkit-${ARCH}" \
+    src/daemon/eventkit-bridge.swift
+done
+lipo -create "$MACOS/cosmos-eventkit-arm64" "$MACOS/cosmos-eventkit-x86_64" \
+  -output "$MACOS/cosmos-eventkit"
+rm "$MACOS/cosmos-eventkit-arm64" "$MACOS/cosmos-eventkit-x86_64" "$EVENTKIT_PLIST"
+chmod +x "$MACOS/cosmos-eventkit"
+
+# Info.plist. LSBackgroundOnly hides the Dock icon entirely. The calendar
+# usage strings are mirrored here so TCC has them whether it attributes a
+# calendar request to the bundle or to the cosmos-eventkit binary.
 cat > "$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -54,14 +88,19 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>LSBackgroundOnly</key><true/>
   <key>NSHumanReadableCopyright</key><string>© Polarity Lab</string>
+  <key>NSCalendarsUsageDescription</key><string>Cosmos reads your calendar events to build your personal knowledge graph.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Cosmos reads your calendar events to build your personal knowledge graph.</string>
 </dict>
 </plist>
 EOF
 
 # Sign with hardened runtime + secure timestamp. Notarization rejects
-# unhardened bundles. No entitlements file needed — the launcher doesn't
-# touch any TCC-protected resource itself; that's daemon-run.sh's job,
-# and TCC keys on the responsible-process bundle id (this one).
+# unhardened bundles. Sign nested binaries before the bundle itself —
+# codesign seals inner code into the bundle signature, so order matters.
+# No entitlements file: the launcher only execs daemon-run.sh, and
+# cosmos-eventkit reaches EventKit through TCC consent, not entitlements.
+codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
+  "$MACOS/cosmos-eventkit"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
   "$MACOS/cosmos-sync"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \

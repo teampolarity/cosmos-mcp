@@ -9,3 +9,6 @@ dist/
 .mcpregistry_*_token
 *.tsbuildinfo
 coverage/
+
+# Local signing materials, never commit
+.signing-work/
