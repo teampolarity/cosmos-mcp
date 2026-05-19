@@ -1,6 +1,6 @@
 {
   "name": "@polarity-lab/cosmos-mcp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "mcpName": "io.github.teampolarity/cosmos-mcp",
   "description": "MCP server for the Polarity exocortex. Read and write your personal knowledge graph from any LLM client.",
   "license": "MIT",

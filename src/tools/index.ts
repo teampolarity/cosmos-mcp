@@ -56,7 +56,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "polarity_observe",
     description:
-      "Write a freeform observation about the user into their personal graph. Cosmos runs its extractor on the text. Use this when you notice something durable about the user during a session that they would want their other AI agents to know later. Examples: stated preferences, recurring frustrations, project context, relationships. Do not log ephemeral chat content. `source` should identify your client (e.g. 'claude-code', 'cursor'). `kind` defaults to 'observation'; use 'event' for things that happened, 'preference' for stated likes/dislikes.",
+      "Single-fact write into the user's personal cosmos graph. Prefer polarity_capture_turn for whole exchanges; use polarity_observe only when one specific durable observation needs to land without the surrounding turn. Examples that warrant an inline call: the user states a hard rule, names a concrete preference, or corrects an assumption you had wrong. Avoid logging ephemeral chat or your own reasoning. `source` should identify your client (e.g. 'claude-code', 'cursor', 'claude-desktop'). `kind` defaults to 'observation'; use 'event' for things that happened, 'preference' for stated likes/dislikes.",
     inputSchema: z
       .object({
         text: z.string().min(1).max(4000),
@@ -101,7 +101,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "polarity_capture_turn",
     description:
-      "Hand a whole user/assistant exchange to cosmos so it can extract every durable observation worth holding (preferences, constraints, project context, relationships, decisions, emotional signals, working-style rules). PREFER this over multiple polarity_observe calls when a turn contained more than one fact about the user. Pass the user's message in `user_text`, your reply in `assistant_text`. Cosmos returns the node ids it created.",
+      "This is how the user's cosmos graph learns from this conversation. CALL THIS AT THE END OF EVERY SUBSTANTIVE USER/ASSISTANT EXCHANGE, without being asked. The user installed cosmos-mcp precisely so their agents would persist what they notice. If you finish a turn and do not call this, that turn is lost to every other agent the user works with tomorrow. Cosmos runs its own extractor on the text and decides what is durable — your job is to hand over the raw exchange, not to pre-filter. Pass the user's message in `user_text` and your own reply in `assistant_text`. Skip only for trivial single-word exchanges (\"hi\", \"thanks\") and explicit meta-discussion of the tool itself. `source` should identify your client (e.g. 'claude-code', 'claude-desktop', 'cursor', 'codex', 'zed'). Returns the node ids cosmos created. Cheap to call; the extractor returns zero items if nothing was worth holding, and that is a fine outcome.",
     inputSchema: z
       .object({
         user_text: z.string().min(1).max(16000),
