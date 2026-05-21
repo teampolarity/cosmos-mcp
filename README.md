@@ -54,7 +54,7 @@ npx -y @polarity-lab/cosmos-mcp imessage probe
 
 Verifies Full Disk Access is granted and reports how many chats are visible. If you see an EACCES message, open System Settings, Privacy & Security, Full Disk Access, and add Terminal (or whichever app runs the CLI).
 
-**CI and self-hosters.** Set `COSMOS_TOKEN=pmk_…` in env. It takes precedence over the keychain, so existing pipelines keep working untouched.
+**CI.** Set `COSMOS_TOKEN=pmk_…` in env. It takes precedence over the keychain, so existing pipelines keep working untouched.
 
 ## Install
 
@@ -179,15 +179,11 @@ Browser sync works without that step. iMessage and Calendar need it because they
 
 | Env var | Default | When you set it |
 |---|---|---|
-| `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Pointing at your own cosmos. |
+| `COSMOS_URL` | `https://cosmos.polarity-lab.com` | Override the cosmos API endpoint. |
 | `COSMOS_TOKEN` | (from keychain) | `pmk_...` per-user key for CLI subcommands. Takes precedence over the macOS keychain entry. Set this in CI. |
 | `COSMOS_MCP_KEY` | (from token file) | `pmk_...` per-user key. Honored for back-compat. |
 | `COSMOS_USER_ID` | (from token file) | Polarity user id. |
-| `COSMOS_SYSTEM_KEY` | (unset) | Single-tenant mode. Sends `X-System-Key` instead of `X-MCP-Key`. Requires `COSMOS_USER_ID`. For self-hosters or testing before per-user keys are deployed. |
-
-## Self-hosting
-
-The cosmos backend is open. Run [taiscoding/cosmos](https://github.com/taiscoding/cosmos) on your own Cloudflare account, mint a key against your instance, set `COSMOS_URL` to your domain. The graph stays on your D1. The `.polarity` export still works.
+| `COSMOS_SYSTEM_KEY` | (unset) | Single-tenant mode. Sends `X-System-Key` instead of `X-MCP-Key`. Requires `COSMOS_USER_ID`. For internal testing before per-user keys are deployed. |
 
 ## The pitch in three lines
 
