@@ -1,5 +1,6 @@
 import { TOOLS } from "../dist/tools/index.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import pkg from "../package.json" with { type: "json" };
 
 const tools = TOOLS.map((t) => {
   const schema = zodToJsonSchema(t.inputSchema, { target: "openApi3", $refStrategy: "none" });
@@ -14,7 +15,7 @@ const tools = TOOLS.map((t) => {
 const card = {
   serverInfo: {
     name: "cosmos-mcp",
-    version: "0.4.1",
+    version: pkg.version,
   },
   tools,
   resources: [],

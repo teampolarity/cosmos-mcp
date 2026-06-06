@@ -35,9 +35,32 @@ interface CaptionState {
   token: string;
   dbPath: string;
   limit: number;
+  maxItems: number | null;
   verbose: boolean;
   recaption: boolean;
   fetch: typeof globalThis.fetch;
+  delayMs: number;
+  progress: boolean;
+}
+
+export interface CaptionOptions {
+  apiBase: string;
+  token: string;
+  dbPath: string;
+  limit?: number;
+  maxItems?: number | null;
+  verbose?: boolean;
+  recaption?: boolean;
+  fetch?: typeof globalThis.fetch;
+  delayMs?: number;
+  progress?: boolean;
+}
+
+export interface CaptionTotals {
+  processed: number;
+  captioned: number;
+  skipped: number;
+  failed: number;
 }
 
 // Skip files larger than this. Workers AI vision wants images you can
@@ -66,41 +89,60 @@ export async function runCaptionCli(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const state: CaptionState = {
+  process.stdout.write(`cosmos · iMessage captioning · queue limit ${flags.limit}${flags.recaption ? ' · RECAPTION mode (overwrites existing)' : ''}\n`);
+
+  const totals = await captionImessageAttachments({
     apiBase,
     token,
     dbPath,
     limit: flags.limit,
+    maxItems: null,
     verbose: flags.verbose,
     recaption: flags.recaption,
     fetch: globalThis.fetch,
-  };
+    delayMs: PER_REQUEST_DELAY_MS,
+    progress: true,
+  });
+  process.stdout.write(`done · ${totals.captioned} captioned · ${totals.skipped} skipped · ${totals.failed} failed\n`);
+  return 0;
+}
 
-  process.stdout.write(`cosmos · iMessage captioning · queue limit ${state.limit}${state.recaption ? ' · RECAPTION mode (overwrites existing)' : ''}\n`);
+export async function captionImessageAttachments(opts: CaptionOptions): Promise<CaptionTotals> {
+  const state: CaptionState = {
+    apiBase: opts.apiBase,
+    token: opts.token,
+    dbPath: opts.dbPath,
+    limit: opts.limit ?? 50,
+    maxItems: opts.maxItems ?? null,
+    verbose: !!opts.verbose,
+    recaption: !!opts.recaption,
+    fetch: opts.fetch ?? globalThis.fetch,
+    delayMs: opts.delayMs ?? PER_REQUEST_DELAY_MS,
+    progress: !!opts.progress,
+  };
 
   // One persistent chat.db connection. We re-query for every item but
   // the OS page cache makes lookups effectively free after the first.
   const db = new Database(state.dbPath, { readonly: true, fileMustExist: true });
   try {
-    const totals = { processed: 0, captioned: 0, skipped: 0, failed: 0 };
+    const totals: CaptionTotals = { processed: 0, captioned: 0, skipped: 0, failed: 0 };
 
     while (true) {
+      if (state.maxItems != null && totals.processed >= state.maxItems) return totals;
       const queue = await fetchQueue(state);
-      if (queue.length === 0) {
-        process.stdout.write(`done · ${totals.captioned} captioned · ${totals.skipped} skipped · ${totals.failed} failed\n`);
-        return 0;
-      }
+      if (queue.length === 0) return totals;
       if (state.verbose) {
         process.stderr.write(`[caption] pulled ${queue.length} items from queue\n`);
       }
 
       for (const item of queue) {
+        if (state.maxItems != null && totals.processed >= state.maxItems) return totals;
         totals.processed++;
         try {
           const result = await captionOne(db, state, item);
           if (result === "captioned") totals.captioned++;
           else if (result === "skipped") totals.skipped++;
-          if (totals.processed % 10 === 0) {
+          if (state.progress && totals.processed % 10 === 0) {
             process.stdout.write(`  ${totals.captioned} captioned, ${totals.skipped} skipped, ${totals.failed} failed (of ${totals.processed})\n`);
           }
         } catch (e) {
@@ -109,7 +151,7 @@ export async function runCaptionCli(argv: string[]): Promise<number> {
             process.stderr.write(`[caption] failed ${item.turn_id}[${item.attachment_index}]: ${(e as Error).message}\n`);
           }
         }
-        await sleep(PER_REQUEST_DELAY_MS);
+        if (state.delayMs > 0) await sleep(state.delayMs);
       }
     }
   } finally {
@@ -156,10 +198,14 @@ async function captionOne(
 
   if (item.attachment_index >= rows.length) {
     if (state.verbose) process.stderr.write(`[caption] no attachment at index ${item.attachment_index} for ${item.turn_id}\n`);
+    await markFailed(state, item, 'attachment_missing');
     return "skipped";
   }
   const row = rows[item.attachment_index];
-  if (!row.filename) return "skipped";
+  if (!row.filename) {
+    await markFailed(state, item, 'missing_filename');
+    return "skipped";
+  }
 
   const filepath = expandHome(row.filename);
   let bytes: Buffer;
@@ -168,6 +214,7 @@ async function captionOne(
     const stat = await fs.stat(filepath);
     if (stat.size > MAX_FILE_BYTES) {
       if (state.verbose) process.stderr.write(`[caption] ${filepath} too large (${stat.size}B), skipping\n`);
+      await markFailed(state, item, 'too_large');
       return "skipped";
     }
     bytes = await fs.readFile(filepath);
@@ -175,6 +222,7 @@ async function captionOne(
     // File may have been deleted, expired (iCloud-evicted), or never
     // downloaded to this Mac. Common case, not an error.
     if (state.verbose) process.stderr.write(`[caption] cannot read ${filepath}: ${(e as Error).message}\n`);
+    await markFailed(state, item, 'file_unavailable');
     return "skipped";
   }
 

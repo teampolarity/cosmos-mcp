@@ -7,6 +7,7 @@ import { readTurns } from "./chat-db.js";
 import { loadContacts } from "./contacts.js";
 import { defaultPath, loadState, saveState } from "./state.js";
 import { syncImessage } from "./sync.js";
+import { captionImessageAttachments } from "./caption.js";
 
 const CHAT_DB_PATH = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const DEFAULT_WINDOW_DAYS = 90;
@@ -40,14 +41,16 @@ export async function runImessageCli(argv: string[]): Promise<number> {
   const concurrency = parseIntFlag(rest, "--concurrency");
   const sinceFlag = parseStringFlag(rest, "--since");
   const backfill = rest.includes("--backfill");
+  const caption = !rest.includes("--no-caption");
   switch (sub) {
-    case "sync": return runSync({ verbose, concurrency, sinceFlag, backfill });
+    case "sync": return runSync({ verbose, concurrency, sinceFlag, backfill, caption });
     case "status": return runStatus();
     default:
       process.stderr.write(
         `Usage: cosmos-mcp imessage <sync|status> [--verbose] [--concurrency N]\n` +
         `  --since YYYY-MM-DD  sync everything since that date (overrides state)\n` +
-        `  --backfill          re-sync the original 90-day window regardless of state\n`
+        `  --backfill          re-sync the original 90-day window regardless of state\n` +
+        `  --no-caption        skip automatic image/video captioning for this run\n`
       );
       return 1;
   }
@@ -58,6 +61,7 @@ interface SyncFlags {
   concurrency?: number;
   sinceFlag?: string;
   backfill?: boolean;
+  caption?: boolean;
 }
 
 async function runSync(flags: SyncFlags): Promise<number> {
@@ -126,6 +130,30 @@ async function runSync(flags: SyncFlags): Promise<number> {
       `\nobservation extraction runs server-side in the background.\n` +
       `reload /me in a couple minutes to see new observations land.\n`
     );
+
+    if (flags.caption) {
+      process.stdout.write(`\ncaptioning iMessage photos and videos...\n`);
+      try {
+        const captions = await captionImessageAttachments({
+          apiBase,
+          token,
+          dbPath: CHAT_DB_PATH,
+          limit: 50,
+          maxItems: null,
+          verbose: flags.verbose,
+          recaption: false,
+          progress: true,
+        });
+        process.stdout.write(
+          `image captions: ${captions.captioned} captioned · ${captions.skipped} skipped · ${captions.failed} failed\n`
+        );
+      } catch (e) {
+        process.stderr.write(`image captioning failed: ${(e as Error).message}\n`);
+        return 1;
+      }
+    } else {
+      process.stdout.write(`\nimage captioning skipped (--no-caption).\n`);
+    }
     return 0;
   } catch (e) {
     // Persist whatever threads succeeded before the throw so a partial sync
