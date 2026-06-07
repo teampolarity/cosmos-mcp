@@ -23,7 +23,7 @@ const ADDRESS_BOOK_ROOT = path.join(
   "AddressBook",
 );
 
-function normalizePhone(raw: string | null | undefined): string | null {
+export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 7) return null;
@@ -35,7 +35,7 @@ function normalizePhone(raw: string | null | undefined): string | null {
   return `+${digits}`;
 }
 
-function normalizeEmail(raw: string | null | undefined): string | null {
+export function normalizeEmail(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed.includes("@")) return null;
@@ -46,15 +46,23 @@ function findAddressBookDbs(): string[] {
   const candidates: string[] = [];
   // Multi-source layout (modern macOS)
   const sourcesRoot = path.join(ADDRESS_BOOK_ROOT, "Sources");
-  if (fs.existsSync(sourcesRoot)) {
-    for (const entry of fs.readdirSync(sourcesRoot)) {
-      const p = path.join(sourcesRoot, entry, "AddressBook-v22.abcddb");
-      if (fs.existsSync(p)) candidates.push(p);
+  try {
+    if (fs.existsSync(sourcesRoot)) {
+      for (const entry of fs.readdirSync(sourcesRoot)) {
+        const p = path.join(sourcesRoot, entry, "AddressBook-v22.abcddb");
+        if (fs.existsSync(p)) candidates.push(p);
+      }
     }
+  } catch {
+    /* Full Disk Access not granted — fall through to legacy path or empty map */
   }
   // Legacy single-file layout
-  const legacy = path.join(ADDRESS_BOOK_ROOT, "AddressBook-v22.abcddb");
-  if (fs.existsSync(legacy)) candidates.push(legacy);
+  try {
+    const legacy = path.join(ADDRESS_BOOK_ROOT, "AddressBook-v22.abcddb");
+    if (fs.existsSync(legacy)) candidates.push(legacy);
+  } catch {
+    /* Same permission guard */
+  }
   return candidates;
 }
 

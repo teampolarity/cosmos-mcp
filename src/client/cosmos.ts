@@ -1,5 +1,6 @@
 import type { Config } from "../config.js";
 import { generateTraceParent, formatTraceParent } from "../trace.js";
+import { PACKAGE_VERSION } from "../version.js";
 
 export interface CosmosRequestInit {
   method?: "GET" | "POST" | "DELETE" | "PATCH";
@@ -56,7 +57,7 @@ export class CosmosClient {
     const headers: Record<string, string> = {
       "X-Polarity-User-Id": this.config.polarityUserId,
       "Content-Type": "application/json",
-      "User-Agent": "cosmos-mcp/0.2.0",
+      "User-Agent": `cosmos-mcp/${PACKAGE_VERSION}`,
       traceparent: formatTraceParent(trace),
     };
     if (this.clientInfo?.name) {

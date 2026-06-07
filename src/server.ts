@@ -9,6 +9,7 @@ import { zodToJsonSchema } from "./util/zod-to-json.js";
 import { TOOLS, findTool } from "./tools/index.js";
 import { CosmosClient, CosmosError } from "./client/cosmos.js";
 import { loadConfig, UNCONFIGURED_MESSAGE } from "./config.js";
+import { PACKAGE_VERSION } from "./version.js";
 
 async function main(): Promise<void> {
   const command = process.argv[2];
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "--version" || command === "-v") {
-    process.stdout.write("cosmos-mcp 0.2.0\n");
+    process.stdout.write(`cosmos-mcp ${PACKAGE_VERSION}\n`);
     return;
   }
   if (command === "--help" || command === "-h") {
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
   const client = config ? new CosmosClient(config) : null;
 
   const server = new Server(
-    { name: "cosmos-mcp", version: "0.2.0" },
+    { name: "cosmos-mcp", version: PACKAGE_VERSION },
     { capabilities: { tools: {} } },
   );
 
