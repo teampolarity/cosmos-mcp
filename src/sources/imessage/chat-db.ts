@@ -70,6 +70,7 @@ export interface CanonicalTurn {
   occurred_at: string;
   text?: string;
   participants: string[];
+  participant_count?: number;
   links?: string[];
   attachments?: AttachmentRef[];
 }
@@ -294,6 +295,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       const occurredAt = new Date(dateMs).toISOString();
       const fromHandle = isFromMe ? "self" : (r.handle_id ?? "unknown");
       const threadParticipants = participantsByChat.get((r.chat_row as bigint).toString()) ?? [];
+      const participantCount = Array.from(new Set(["self", ...threadParticipants.filter(Boolean)])).length;
       // Same volume filter on the participants list: a group thread
       // ships only the participants the user actually exchanges with.
       const filteredParticipants = threadParticipants.filter(isHighVolume);
@@ -308,6 +310,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
         occurred_at: occurredAt,
         text: decodedText,
         participants: Array.from(new Set(allParticipants)),
+        participant_count: participantCount,
         ...(links && links.length ? { links } : {}),
         ...(atts && atts.length ? { attachments: atts } : {}),
       });

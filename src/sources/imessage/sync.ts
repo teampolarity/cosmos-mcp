@@ -78,6 +78,10 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
       const meta = opts.state.handles[handle];
       return { handle, is_self: false, name: meta?.name };
     });
+    const participantCount = Math.max(
+      participantHandles.length,
+      ...turns.map((t) => Number(t.participant_count || 0)),
+    );
 
     for (let i = 0; i < turns.length; i += CHUNK_SIZE) {
       const slice = turns.slice(i, i + CHUNK_SIZE).map((t) => ({
@@ -105,6 +109,7 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
           source: "imessage",
           thread_id: threadId,
           participants,
+          participant_count: participantCount,
           turns: slice,
           extract: "content",
         }),

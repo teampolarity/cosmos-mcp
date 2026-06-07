@@ -58,6 +58,8 @@ beforeAll(() => {
   insertHandles.run(2, "+19175550199");
   insertHandles.run(3, "62227");
   insertHandles.run(4, "+13035550144");
+  insertHandles.run(5, "+14155550105");
+  insertHandles.run(6, "+14155550106");
 
   const insertChats = db.prepare(`INSERT INTO chat (ROWID, guid) VALUES (?, ?)`);
   insertChats.run(1, "iMessage;-;+12025550100");
@@ -93,6 +95,8 @@ beforeAll(() => {
     rowId++;
   }
   chj.run(2, 2);
+  chj.run(2, 5);
+  chj.run(2, 6);
 
   // Chat 3: 1 turn from short-code, user never replies (slop)
   insertMsg.run(rowId, `m-c3-0`, `CODE 99`, 3, 0, T0 + 30n * MIN);
@@ -156,6 +160,17 @@ describe("chat-db.readTurns", () => {
     expect(threadIds.has("iMessage;-;62227")).toBe(false);
     expect(threadIds.has("iMessage;-;+13035550144")).toBe(false);
     expect(threadIds.size).toBe(2);
+  });
+
+  it("keeps the original group size when low-volume group members are filtered from participants", async () => {
+    const turns: any[] = [];
+    for await (const chunk of readTurns({ dbPath: TMP, since: new Date(0), chunkSize: 100 })) {
+      turns.push(...chunk);
+    }
+
+    const groupTurn = turns.find((t) => t.thread_id === "iMessage;-;chat0001");
+    expect(groupTurn?.participants).toEqual(["self", "+19175550199"]);
+    expect(groupTurn?.participant_count).toBe(4);
   });
 
   it("attaches photo + url metadata when present", async () => {
