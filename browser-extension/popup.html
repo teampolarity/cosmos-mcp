@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cosmos</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --fg: #e7e9ee;
+      --muted: #8a8f9c;
+      --accent: #7fedc7;
+      --line: rgba(255,255,255,0.10);
+    }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      width: 280px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      padding: 16px 16px 14px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 11px;
+      margin: 0 0 14px;
+    }
+    .status {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 16px;
+      min-height: 32px;
+    }
+    .status b { color: var(--fg); font-weight: 500; }
+    .actions { display: flex; gap: 8px; margin-bottom: 6px; }
+    button, a.btn {
+      flex: 1;
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--line);
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 4px;
+      text-decoration: none;
+      text-align: center;
+    }
+    button.primary { background: var(--accent); color: #0b0d12; border-color: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .meta-link {
+      display: block;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 10px;
+      text-align: center;
+      text-decoration: none;
+    }
+    .meta-link:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <h1>Cosmos</h1>
+  <p class="sub">browser history → your graph</p>
+  <div class="actions">
+    <button id="sync" class="primary">sync now</button>
+    <a class="btn" id="options" href="#">options</a>
+  </div>
+  <div class="status" id="status">checking…</div>
+  <a class="meta-link" href="https://cosmos.polarity-lab.com/me" target="_blank" rel="noopener">open /me →</a>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

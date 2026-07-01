@@ -24,6 +24,22 @@ Cosmos inverts that. Your knowledge graph lives in one place, and any MCP-capabl
 
 The thing you carry is a `.polarity` file. Yours.
 
+## One-line install
+
+```bash
+curl -fsSL https://mcp.polarity-lab.com/install.sh | sh
+```
+
+On macOS this installs the MCP server, registers `cosmos-mcp://`, wires Claude Desktop, Claude Code, Cursor, Codex, Zed, and Continue, then installs `Cosmos Sync.app` so iMessage, browser history, calendar, Claude Desktop transcripts, and shell history can sync in the background. On linux and windows it installs the MCP server path only.
+
+If you want to inspect before changing anything:
+
+```bash
+curl -fsSL https://mcp.polarity-lab.com/install.sh -o install.sh
+bash install.sh --dry-run
+bash install.sh
+```
+
 ## Provisioning
 
 There are two ways to get a `pmk_…` key onto your Mac.
@@ -56,13 +72,15 @@ Verifies Full Disk Access is granted and reports how many chats are visible. If 
 
 **CI.** Set `COSMOS_TOKEN=pmk_…` in env. It takes precedence over the keychain, so existing pipelines keep working untouched.
 
-## Install
+## Manual MCP config
+
+The installer handles this for common clients. If you want to wire a client by hand, point it at the package.
 
 ```bash
 npx -y @polarity-lab/cosmos-mcp init
 ```
 
-Opens your browser. Sign in at cosmos.polarity-lab.com, approve a per-user key, and the token lands at `~/.config/cosmos-mcp/token` (0600). Then point any MCP client at it:
+This opens your browser. Sign in at cosmos.polarity-lab.com, approve a per-user key, and the token lands at `~/.config/cosmos-mcp/token` (0600). Then point any MCP client at it:
 
 ```json
 {

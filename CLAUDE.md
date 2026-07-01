@@ -12,9 +12,11 @@
 - `bin/cosmos-mcp.js` — CLI entrypoint. Dispatches subcommands and resolves the user key.
 - `src/server.ts` → `dist/server.js` — the MCP stdio server. `npm start` runs this.
 - `src/tools/` — the 11 read/write tools exposed to MCP clients.
-- `src/sources/` — local CLI source connectors (`imessage`, `browser`, `calendar`).
+- `src/sources/` — local CLI source connectors (`imessage`, `browser`, `calendar`, `claude-desktop`, `shell-history`).
 - `src/daemon/` — scaffolding for the signed `Cosmos Sync.app` LaunchAgent (0.6.0+, npm publish blocked on lab Apple Dev account transition).
-- `src/auth/` — key handling, `provision`, `install-handler` for the `cosmos-mcp://` URL scheme.
+- `src/auth/` — browser-based `init` bootstrap that mints a per-user key. The `provision` / `install-handler` / `daemon` subcommands live in `bin/cosmos-mcp.js`, not under `src/auth/`.
+- `src/version.ts` — single source of truth for the runtime version. Read from `package.json` at module load; used in the User-Agent header, `--version` output, and the MCP handshake. Don't hardcode versions anywhere else.
+- `browser-extension/` — the Chrome and Firefox WebExtension surface (listed on CWS as `cosmos by polarity lab`, extension id `jomeclciefpboanjnlfcdfgfjalldfno`, and on Mozilla AMO). Lives in this repo, not as a separate `cosmos-browser-extension` repo. Shares `filter-rules.json` with `src/sources/browser/` via `browser-extension/scripts/sync-filter-rules.sh`. Publish scripts are `amo-publish.sh` and `chrome-publish.sh` under `browser-extension/scripts/`.
 - `tests/` — vitest. Run via `npm test`.
 
 ## Tools (authoritative list in `src/tools/index.ts`)

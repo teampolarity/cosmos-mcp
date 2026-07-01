@@ -49,12 +49,12 @@ const NOISE_CALENDARS = new Set([
   "found in natural language",
 ]);
 
-interface Attendee {
+export interface Attendee {
   name: string | null;
   email: string | null;
 }
 
-interface NormalizedEvent {
+export interface NormalizedEvent {
   summary: string;
   calendar: string;
   start: string; // ISO8601
@@ -63,7 +63,7 @@ interface NormalizedEvent {
   attendees: Attendee[];
 }
 
-interface CalendarAgg {
+export interface CalendarAgg {
   summary: string;
   calendar: string;
   count: number;
@@ -240,7 +240,7 @@ async function readAppleCalendar(windowDays: number): Promise<NormalizedEvent[]>
 
 // ---- aggregation ------------------------------------------------------------
 
-function aggregate(events: NormalizedEvent[]): CalendarAgg[] {
+export function aggregate(events: NormalizedEvent[]): CalendarAgg[] {
   const map = new Map<string, CalendarAgg>();
   for (const e of events) {
     const calTitle = (e.calendar || "").trim();
@@ -280,7 +280,7 @@ function aggregate(events: NormalizedEvent[]): CalendarAgg[] {
 
 // Dedupe attendees by email (lowercased) when present, else by name.
 // Caps the list so one huge all-hands does not balloon the payload.
-function dedupeAttendees(list: Attendee[]): Attendee[] {
+export function dedupeAttendees(list: Attendee[]): Attendee[] {
   const seen = new Map<string, Attendee>();
   for (const a of list) {
     if (!a || (!a.email && !a.name)) continue;

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cosmos · options</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --fg: #e7e9ee;
+      --muted: #8a8f9c;
+      --accent: #7fedc7;
+      --line: rgba(255,255,255,0.10);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    main {
+      max-width: 580px;
+      margin: 48px auto 60px;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      margin: 0 0 6px;
+    }
+    p.sub {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 24px 0 6px;
+    }
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+      color: var(--fg);
+      padding: 10px 12px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      background: var(--accent);
+      color: #0b0d12;
+      border: 1px solid var(--accent);
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--fg);
+      border-color: var(--line);
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .status {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+    .status.ok { color: var(--accent); }
+    .status.err { color: #ff7a8a; }
+    .body-line {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      margin: 4px 0 8px;
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cosmos · browser history</h1>
+    <p class="sub">Ships meaningful pages from your local browser history into your cosmos graph. Filtering runs in this extension; only the pages that look like real content reach the server.</p>
+
+    <label>1. mint a cosmos MCP key</label>
+    <div class="body-line">
+      Sign in at <a href="https://cosmos.polarity-lab.com/connectors" target="_blank" rel="noopener">cosmos.polarity-lab.com/connectors</a>, click <b>+ add</b> in the MCP clients section, name it something like <code>browser-extension</code>, copy the <code>pmk_…</code> string.
+    </div>
+
+    <label>2. paste it here</label>
+    <input type="password" id="key" placeholder="pmk_…" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button id="save">save</button>
+      <button id="clear" class="ghost">clear</button>
+      <button id="syncnow" class="ghost">sync now</button>
+    </div>
+    <div class="status" id="status"></div>
+
+    <label>What gets sent</label>
+    <div class="body-line">
+      URL · title · hostname · last-visit timestamp · visit count · the literal string "web" as source. We never send page bodies, cookies, or form data. Everything else is filtered out client-side before the POST.
+    </div>
+
+    <label>What gets filtered out</label>
+    <div class="body-line">
+      Navigational noise (inbox, feed, root pages of social hubs), your own deployed sites, OAuth and search-result URLs, untitled tabs. The full list lives in <code>shared/filter-rules.json</code> and is shared with the <code>cosmos-mcp</code> CLI so the desktop sync and the extension agree on what's signal.
+    </div>
+  </main>
+  <script src="options.js" type="module"></script>
+</body>
+</html>
