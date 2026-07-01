@@ -8,6 +8,7 @@ import { loadContacts } from "./contacts.js";
 import { defaultPath, loadState, saveState } from "./state.js";
 import { syncImessage } from "./sync.js";
 import { captionImessageAttachments } from "./caption.js";
+import { fetchMediaPrefs, pushMediaRulesFromState } from "./media-prefs.js";
 
 const CHAT_DB_PATH = path.join(os.homedir(), "Library", "Messages", "chat.db");
 const DEFAULT_WINDOW_DAYS = 90;
@@ -120,6 +121,7 @@ async function runSync(flags: SyncFlags): Promise<number> {
       concurrency: flags.concurrency,
     });
     saveState(statePath, state);
+    await pushMediaRulesFromState(apiBase, token, state).catch(() => {});
     process.stdout.write(
       `\n  ${result.persons_upserted} persons upserted\n` +
       `  ${result.threads_upserted} threads upserted\n` +
@@ -132,7 +134,16 @@ async function runSync(flags: SyncFlags): Promise<number> {
     );
 
     if (flags.caption) {
-      process.stdout.write(`\ncaptioning iMessage photos and videos...\n`);
+      let mediaPrefs;
+      try {
+        mediaPrefs = await fetchMediaPrefs(apiBase, token);
+      } catch {
+        mediaPrefs = { caption_mode: "server" as const, skip_kinds: ["sticker"] };
+      }
+      if (mediaPrefs.caption_mode === "off") {
+        process.stdout.write(`\nimage captioning skipped (caption_mode=off in cosmos settings).\n`);
+      } else {
+      process.stdout.write(`\ncaptioning iMessage photos and videos (${mediaPrefs.caption_mode})...\n`);
       try {
         const captions = await captionImessageAttachments({
           apiBase,
@@ -143,13 +154,17 @@ async function runSync(flags: SyncFlags): Promise<number> {
           verbose: flags.verbose,
           recaption: false,
           progress: true,
+          captionMode: mediaPrefs.caption_mode,
+          skipKinds: mediaPrefs.skip_kinds,
+          imessageState: state,
         });
         process.stdout.write(
           `image captions: ${captions.captioned} captioned · ${captions.skipped} skipped · ${captions.failed} failed\n`
         );
       } catch (e) {
         process.stderr.write(`image captioning failed: ${(e as Error).message}\n`);
-        return 1;
+        process.stderr.write(`(iMessage turns already synced; caption is optional.)\n`);
+      }
       }
     } else {
       process.stdout.write(`\nimage captioning skipped (--no-caption).\n`);
