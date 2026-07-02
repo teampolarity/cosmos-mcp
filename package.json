@@ -1,6 +1,6 @@
 {
   "name": "@polarity-lab/cosmos-mcp",
-  "version": "0.8.5",
+  "version": "0.9.25",
   "mcpName": "io.github.teampolarity/cosmos-mcp",
   "description": "MCP server for the Polarity exocortex. Read and write your personal knowledge graph from any LLM client.",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
     "prepublishOnly": "npm run build",
     "lint": "tsc --noEmit"
   },
