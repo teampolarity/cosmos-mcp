@@ -43,6 +43,7 @@ describe("mcp landing worker", () => {
     const card = await res.json() as { serverInfo: { version: string } };
 
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(card.serverInfo.version).toBe(pkg.version);
   });
 
@@ -51,6 +52,7 @@ describe("mcp landing worker", () => {
     const metadata = await res.json() as { version: string; packages: Array<{ version: string }> };
 
     expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
     expect(metadata.version).toBe(pkg.version);
     expect(metadata.packages[0]?.version).toBe(pkg.version);
   });

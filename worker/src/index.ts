@@ -369,7 +369,7 @@ export default {
       return new Response(request.method === "HEAD" ? null : SERVER_CARD, {
         headers: {
           "content-type": "application/json; charset=utf-8",
-          "cache-control": "public, max-age=300",
+          "cache-control": "no-store",
           "access-control-allow-origin": "*",
         },
       });
@@ -379,7 +379,7 @@ export default {
       return new Response(request.method === "HEAD" ? null : SERVER_JSON, {
         headers: {
           "content-type": "application/json; charset=utf-8",
-          "cache-control": "public, max-age=300",
+          "cache-control": "no-store",
           "access-control-allow-origin": "*",
         },
       });
