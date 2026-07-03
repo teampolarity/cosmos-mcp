@@ -98,8 +98,19 @@ enum CosmosAPIClient {
 
     private static func token() -> String? { CosmosAuthStore.loadToken() }
 
+    /// Build API URLs with query strings — never use appendingPathComponent for ?query.
+    private static func makeURL(path: String, query: [String: String] = [:]) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path = path.hasPrefix("/") ? path : "/\(path)"
+        if !query.isEmpty {
+            components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        return components.url
+    }
+
     private static func request(
         path: String,
+        query: [String: String] = [:],
         method: String = "GET",
         body: [String: Any]? = nil,
         timeout: TimeInterval = 30,
@@ -109,7 +120,11 @@ enum CosmosAPIClient {
             completion(.failure(APIError(message: "not signed in")))
             return
         }
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = makeURL(path: path, query: query) else {
+            completion(.failure(APIError(message: "invalid url")))
+            return
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = timeout
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -136,21 +151,23 @@ enum CosmosAPIClient {
         }.resume()
     }
 
-    static func fetchMoments(refresh: Bool = false, completion: @escaping (Result<([ThreadMoment], Bool), APIError>) -> Void) {
-        var path = "/api/me/moments"
+    static func fetchMoments(refresh: Bool = false, completion: @escaping (Result<([ThreadMoment], Bool, Bool), APIError>) -> Void) {
+        var query: [String: String] = [:]
         if refresh {
-            path += "?refresh=1&t=\(Int(Date().timeIntervalSince1970 * 1000))"
+            query["refresh"] = "1"
+            query["t"] = String(Int(Date().timeIntervalSince1970 * 1000))
         }
-        request(path: path, timeout: refresh ? 90 : 30) { result in
+        request(path: "/api/me/moments", query: query, timeout: refresh ? 90 : 30) { result in
             switch result {
             case .success(let json):
                 if json["schema_ready"] as? Bool == false {
-                    completion(.failure(APIError(message: "thread is updating — try refresh in a minute")))
+                    completion(.failure(APIError(message: "thread is updating — try again in a minute")))
                     return
                 }
                 let rows = json["moments"] as? [[String: Any]] ?? []
                 let recompiled = json["recompiled"] as? Bool ?? false
-                completion(.success((ThreadMoment.parseList(rows), recompiled)))
+                let compiling = json["compiling"] as? Bool ?? false
+                completion(.success((ThreadMoment.parseList(rows), recompiled, compiling)))
             case .failure(let err):
                 completion(.failure(err))
             }
@@ -158,7 +175,8 @@ enum CosmosAPIClient {
     }
 
     static func reply(momentId: String, body: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(path: "/api/me/moments/\(momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId)/reply", method: "POST", body: ["body": body]) { result in
+        let encoded = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        request(path: "/api/me/moments/\(encoded)/reply", method: "POST", body: ["body": body]) { result in
             switch result {
             case .success: completion(.success(()))
             case .failure(let err): completion(.failure(err))
@@ -193,8 +211,10 @@ enum CosmosAPIClient {
     }
 
     static func fetchProvenance(nodeId: String, completion: @escaping (Result<[ProvenanceStep], APIError>) -> Void) {
-        let path = "/api/me/provenance/trace?node_id=\(nodeId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? nodeId)&max_depth=5"
-        request(path: path) { result in
+        request(path: "/api/me/provenance/trace", query: [
+            "node_id": nodeId,
+            "max_depth": "5",
+        ]) { result in
             switch result {
             case .success(let json):
                 let stepsRaw = json["steps"] as? [[String: Any]] ?? []
@@ -217,13 +237,11 @@ enum CosmosAPIClient {
             case .success(let json):
                 if let local = json["local"] as? [String: Any],
                    let im = local["imessage"] as? [String: Any],
-                   let connected = im["connected"] as? Bool {
+                   im["connected"] as? Bool == true {
                     let ago = im["last_ago"] as? String ?? ""
                     let turns = im["turn_count"] as? Int ?? 0
-                    if connected {
-                        completion(.success("iMessage connected · \(turns) turns · last sync \(ago)"))
-                        return
-                    }
+                    completion(.success("iMessage connected · \(turns) turns · last sync \(ago)"))
+                    return
                 }
                 let hint = json["hint"] as? String ?? json["status"] as? String ?? "sync status unknown"
                 completion(.success(hint))

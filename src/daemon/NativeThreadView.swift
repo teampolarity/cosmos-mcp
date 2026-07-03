@@ -19,6 +19,7 @@ struct NativeThreadView: View {
     @State private var onboarding: ThreadOnboardingStatus?
     @State private var onboardingAnswer = ""
     @State private var showOnboarding = false
+    @State private var loadGeneration = 0
 
     private var active: ThreadMoment? {
         guard !moments.isEmpty, index >= 0, index < moments.count else { return nil }
@@ -50,7 +51,7 @@ struct NativeThreadView: View {
                         showConnect = false
                         onOpenSettings()
                     },
-                    onLoadThread: { loadMoments(refresh: true) }
+                    onLoadThread: { loadMoments(refresh: false) }
                 )
             }
         }
@@ -59,7 +60,7 @@ struct NativeThreadView: View {
             loadMoments(refresh: false)
         }
         .onChange(of: showConnect) { open in
-            if !open { loadMoments(refresh: true) }
+            if !open && moments.isEmpty { loadMoments(refresh: false) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosShowConnect)) { _ in
             showConnect = true
@@ -96,28 +97,28 @@ struct NativeThreadView: View {
                     .buttonStyle(.plain)
             }
 
-            if moments.count > 1 {
+            if moments.count >= 1 {
                 HStack(spacing: 8) {
-                    pagerButton("←", disabled: index == 0) { index -= 1 }
+                    if moments.count > 1 {
+                        circleIconButton("←", disabled: index == 0) { index -= 1 }
+                    }
                     VStack(spacing: 2) {
                         Text(active?.label.uppercased() ?? "")
-                    .font(.system(size: 9, weight: .regular))
-                    .textCase(.uppercase)
-                    .foregroundColor(CosmosTheme.textMuted)
+                            .font(.system(size: 9, weight: .regular))
+                            .textCase(.uppercase)
+                            .foregroundColor(CosmosTheme.textMuted)
                             .lineLimit(1)
-                        Text("\(index + 1) / \(moments.count)")
-                            .font(.system(size: 9))
-                            .foregroundColor(CosmosTheme.textFaint)
+                        if moments.count > 1 {
+                            Text("\(index + 1) / \(moments.count)")
+                                .font(.system(size: 9))
+                                .foregroundColor(CosmosTheme.textFaint)
+                        }
                     }
                     .frame(maxWidth: .infinity)
-                    pagerButton("→", disabled: index >= moments.count - 1) { index += 1 }
-                    Button("↻") { loadMoments(refresh: true) }
-                        .font(.system(size: 14))
-                        .frame(width: 36, height: 36)
-                        .background(CosmosTheme.surfaceRaised)
-                        .overlay(Circle().stroke(CosmosTheme.border))
-                        .buttonStyle(.plain)
-                        .disabled(refreshing)
+                    if moments.count > 1 {
+                        circleIconButton("→", disabled: index >= moments.count - 1) { index += 1 }
+                    }
+                    circleIconButton("↻", disabled: refreshing) { loadMoments(refresh: true) }
                 }
             }
         }
@@ -141,7 +142,7 @@ struct NativeThreadView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
                 HStack(spacing: 10) {
-                    Button("Load Thread") { loadMoments(refresh: true) }
+                    Button("Load Thread") { loadMoments(refresh: false) }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 16)
@@ -211,12 +212,16 @@ struct NativeThreadView: View {
         .padding(12)
     }
 
-    private func pagerButton(_ label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+    private func circleIconButton(_ label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label)
-                .frame(width: 36, height: 36)
-                .background(CosmosTheme.surfaceRaised)
-                .overlay(Circle().stroke(CosmosTheme.border))
+            ZStack {
+                Circle().fill(CosmosTheme.surfaceRaised)
+                Circle().strokeBorder(CosmosTheme.border, lineWidth: 1)
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(CosmosTheme.text)
+            }
+            .frame(width: 36, height: 36)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -341,17 +346,28 @@ struct NativeThreadView: View {
     }
 
     private func loadMoments(refresh: Bool) {
+        let gen = loadGeneration + 1
+        loadGeneration = gen
         refreshing = refresh
         loading = moments.isEmpty
-        errorMessage = ""
+        if !refresh { errorMessage = "" }
         CosmosAPIClient.fetchMoments(refresh: refresh) { result in
+            guard gen == loadGeneration else { return }
             loading = false
             refreshing = false
             switch result {
-            case .success(let (list, _)):
+            case .success(let (list, _, compiling)):
                 moments = list
                 if index >= list.count { index = 0 }
-                if list.isEmpty { errorMessage = "" }
+                if list.isEmpty {
+                    if compiling {
+                        errorMessage = "Thread is compiling on the server. Tap Load Thread again in a few seconds."
+                    } else {
+                        errorMessage = ""
+                    }
+                } else {
+                    errorMessage = ""
+                }
             case .failure(let err):
                 errorMessage = err.message
             }

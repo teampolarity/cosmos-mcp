@@ -10,12 +10,10 @@ struct ConnectSheetView: View {
     @State private var syncHint = ""
     @State private var momentCount = 0
     @State private var handlerMessage = ""
-
-    private var fda: FdaStatus { FdaChecker.loadPersistedStatus() }
-    private var signedIn: Bool { CosmosAuthStore.isAuthenticated() }
-    private var mcpReady: Bool { McpKeyStore.isProvisioned }
-    private var handlerReady: Bool { McpKeyStore.handlerInstalled }
-    private var imessageReady: Bool { fda == .granted }
+    @State private var signedIn = false
+    @State private var mcpReady = false
+    @State private var handlerReady = false
+    @State private var fdaStatus: FdaStatus = .unknown
 
     var body: some View {
         ZStack {
@@ -37,8 +35,8 @@ struct ConnectSheetView: View {
                     .foregroundColor(CosmosTheme.textFaint)
 
                 statusRow("Sign in", signedIn ? "signed in" : "required", ok: signedIn)
-                statusRow("Full Disk Access", fdaLabel, ok: fda == .granted)
-                statusRow("iMessage sync", imessageHint, ok: imessageReady && syncHint.contains("connected"))
+                statusRow("Full Disk Access", fdaLabel, ok: fdaStatus == .granted)
+                statusRow("iMessage sync", imessageHint, ok: fdaStatus == .granted && syncHint.contains("connected"))
                 statusRow("MCP key (Cursor)", mcpReady ? "provisioned" : "optional", ok: mcpReady)
                 statusRow("URL handler", handlerReady ? "installed" : "optional", ok: handlerReady)
 
@@ -77,7 +75,7 @@ struct ConnectSheetView: View {
                             installHandler()
                         }
                     }
-                    if fda == .denied {
+                    if fdaStatus == .denied {
                         actionButton("Grant Full Disk Access", primary: true) {
                             onClose()
                             onOpenSettings()
@@ -95,11 +93,11 @@ struct ConnectSheetView: View {
             .background(CosmosTheme.surfaceRaised)
             .cornerRadius(16)
         }
-        .onAppear(perform: refreshCloudStatus)
+        .onAppear(perform: refreshLocalStatus)
     }
 
     private var fdaLabel: String {
-        switch fda {
+        switch fdaStatus {
         case .granted: return "granted"
         case .denied: return "needs access"
         case .noImessage: return "no Messages db"
@@ -108,7 +106,7 @@ struct ConnectSheetView: View {
     }
 
     private var imessageHint: String {
-        if fda != .granted { return "needs FDA" }
+        if fdaStatus != .granted { return "needs FDA" }
         if syncHint.contains("connected") { return "connected" }
         return "sync from Settings"
     }
@@ -141,24 +139,29 @@ struct ConnectSheetView: View {
         .buttonStyle(.plain)
     }
 
+    private func refreshLocalStatus() {
+        signedIn = CosmosAuthStore.isAuthenticated()
+        fdaStatus = FdaChecker.loadPersistedStatus()
+        mcpReady = McpKeyStore.isProvisioned
+        handlerReady = McpKeyStore.handlerInstalled
+        CosmosAPIClient.fetchSyncStatus { result in
+            if case .success(let hint) = result { syncHint = hint }
+        }
+        CosmosAPIClient.fetchMoments(refresh: false) { result in
+            if case .success(let (list, _, _)) = result { momentCount = list.count }
+        }
+    }
+
     private func installHandler() {
         handlerMessage = "Installing…"
         DispatchQueue.global(qos: .userInitiated).async {
             let result = McpRunner.run(["install-handler"])
             DispatchQueue.main.async {
+                handlerReady = McpKeyStore.handlerInstalled
                 handlerMessage = result.ok
                     ? "Handler installed. Tap Open in cosmos-mcp from Connectors."
                     : McpRunner.formatOutput(result)
             }
-        }
-    }
-
-    private func refreshCloudStatus() {
-        CosmosAPIClient.fetchSyncStatus { result in
-            if case .success(let hint) = result { syncHint = hint }
-        }
-        CosmosAPIClient.fetchMoments { result in
-            if case .success(let (list, _)) = result { momentCount = list.count }
         }
     }
 }

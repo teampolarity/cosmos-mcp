@@ -1,4 +1,4 @@
-// Local MCP key — keychain (primary) + ~/.config/cosmos-mcp/token JSON fallback.
+// Local MCP key — token file for UI; keychain only when explicitly needed.
 
 import Foundation
 import Security
@@ -11,14 +11,30 @@ enum McpKeyStore {
         NSHomeDirectory() + "/.config/cosmos-mcp/token"
     }
 
+    private static var cachedProvisioned: Bool?
+    private static var cachedAt: Date?
+
+    /// UI-safe check — reads JSON token file only (no keychain prompt).
     static var isProvisioned: Bool {
-        guard let key = loadKey() else { return false }
-        return key.hasPrefix("pmk_") && key.count > 12
+        if let cached = cachedProvisioned,
+           let cachedAt,
+           Date().timeIntervalSince(cachedAt) < 120 {
+            return cached
+        }
+        let ok = readTokenFile()?.hasPrefix("pmk_") == true
+        cachedProvisioned = ok
+        cachedAt = Date()
+        return ok
+    }
+
+    static func invalidateCache() {
+        cachedProvisioned = nil
+        cachedAt = nil
     }
 
     static func loadKey() -> String? {
-        if let fromChain = readKeychain(), fromChain.hasPrefix("pmk_") { return fromChain }
-        return readTokenFile()
+        if let fromFile = readTokenFile(), fromFile.hasPrefix("pmk_") { return fromFile }
+        return readKeychain()
     }
 
     static var handlerInstalled: Bool {
