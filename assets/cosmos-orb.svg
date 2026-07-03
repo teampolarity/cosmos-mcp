@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="cbars-static" width="9" height="512" patternUnits="userSpaceOnUse">
+      <rect width="9" height="512" fill="#FFFFFF"/>
+      <rect x="0" width="1" height="512" fill="#000000"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="#000000"/>
+  <text x="256" y="189"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-weight="500"
+        font-size="560"
+        letter-spacing="-12"
+        fill="url(#cbars-static)"
+        text-anchor="middle"
+        dominant-baseline="central">c</text>
+</svg>

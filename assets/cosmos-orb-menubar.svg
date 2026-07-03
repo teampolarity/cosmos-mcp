@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template-style menu bar glyph: black on transparent (macOS tints for light/dark). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22">
+  <text x="11" y="16.5"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-weight="500"
+        font-size="19"
+        letter-spacing="-0.5"
+        fill="#000000"
+        text-anchor="middle">c</text>
+</svg>

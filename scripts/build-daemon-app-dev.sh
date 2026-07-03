@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Build, sign, notarize, and staple Cosmos Sync.app into dist/CosmosSync.app.
-# Requires: a Developer ID Application cert in login.keychain and an App Store
-# Connect API .p8 key. See docs/handoff_2026-05-19_daemon_app_bundle.md.
+# Build Cosmos.app (menu bar + background daemon launcher). Unsigned dev build.
 set -euo pipefail
-
-SIGN_IDENTITY="${SIGN_IDENTITY:-$(bash "$(dirname "$0")/resolve-sign-identity.sh")}"
-NOTARY_KEY_PATH="${NOTARY_KEY_PATH:-$HOME/projects/blueno-ios/.secrets/AuthKey_8F38V68Y2K.p8}"
-NOTARY_KEY_ID="${NOTARY_KEY_ID:-8F38V68Y2K}"
-NOTARY_ISSUER_ID="${NOTARY_ISSUER_ID:-9e78df19-ca2e-444f-8726-3749a32e55db}"
 
 APP_NAME="Cosmos"
 BUNDLE_ID="com.polaritylab.cosmos-mcp-daemon"
@@ -35,9 +28,9 @@ build_universal() {
   chmod +x "$MACOS/$out"
 }
 
-# launchd fires cosmos-sync-daemon → daemon-run.sh (Full Disk Access)
+# launchd + Full Disk Access entrypoint
 build_universal cosmos-sync-daemon src/daemon/launcher.swift
-# Menu bar UI (login item / double-click)
+# Menu bar UI (double-click / login item)
 build_universal cosmos-sync \
   src/daemon/MenuApp.swift \
   src/daemon/UpdateProgressPanel.swift \
@@ -88,33 +81,41 @@ EOF
 
 bash "$(dirname "$0")/render-app-icons.sh" "$CONTENTS/Resources"
 
+# TCC (Full Disk Access) binds to the code signature, not the display name.
+# Linker-signed swiftc binaries show as "cosmos-sync-arm64" and break FDA
+# after every rebuild. Sign the bundle so CFBundleIdentifier is authoritative.
 ENTITLEMENTS="$(dirname "$0")/Cosmos.entitlements"
 SIGN_ENT_ARGS=()
 if [[ -f "$ENTITLEMENTS" ]]; then
   SIGN_ENT_ARGS=(--entitlements "$ENTITLEMENTS")
 fi
 
-codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync-daemon"
-codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync"
-codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$OUT_DIR"
+DEV_SIGN="${SIGN_IDENTITY:-}"
+if [[ -z "$DEV_SIGN" ]]; then
+  DEV_SIGN="$(bash "$(dirname "$0")/resolve-sign-identity.sh" 2>/dev/null || true)"
+fi
+if [[ -n "$DEV_SIGN" ]]; then
+  echo "→ signing with: $DEV_SIGN"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync-daemon"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$OUT_DIR"
+else
+  echo "→ signing adhoc (grant Full Disk Access again after each rebuild)"
+  codesign --force --sign - "$MACOS/cosmos-sync-daemon"
+  codesign --force --sign - "$MACOS/cosmos-sync"
+  codesign --force --sign - "$OUT_DIR"
+fi
+codesign --verify --deep --strict "$OUT_DIR" 2>/dev/null || true
 
-codesign --verify --deep --strict --verbose=2 "$OUT_DIR"
-spctl --assess --type execute --verbose=4 "$OUT_DIR" || true
+USER_APPS="$HOME/Applications"
+LEGACY_APP="$USER_APPS/Cosmos Sync.app"
+if [[ -d "$LEGACY_APP" ]]; then
+  rm -rf "$LEGACY_APP"
+  echo "✓ removed legacy $LEGACY_APP"
+fi
+mkdir -p "$USER_APPS"
+rm -rf "$USER_APPS/$APP_NAME.app"
+cp -R "$OUT_DIR" "$USER_APPS/$APP_NAME.app"
+echo "✓ installed to $USER_APPS/$APP_NAME.app"
 
-ZIP_PATH="dist/Cosmos.zip"
-rm -f "$ZIP_PATH"
-ditto -c -k --keepParent "$OUT_DIR" "$ZIP_PATH"
-
-xcrun notarytool submit "$ZIP_PATH" \
-  --key "$NOTARY_KEY_PATH" \
-  --key-id "$NOTARY_KEY_ID" \
-  --issuer "$NOTARY_ISSUER_ID" \
-  --wait
-
-xcrun stapler staple "$OUT_DIR"
-xcrun stapler validate "$OUT_DIR"
-
-echo "✓ dist/Cosmos.app built, signed, notarized, stapled."
+echo "✓ $OUT_DIR built and signed. For notarized release: bash scripts/build-daemon-app.sh"
