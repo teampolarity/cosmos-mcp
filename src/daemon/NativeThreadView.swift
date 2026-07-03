@@ -49,7 +49,8 @@ struct NativeThreadView: View {
                     onOpenSettings: {
                         showConnect = false
                         onOpenSettings()
-                    }
+                    },
+                    onLoadThread: { loadMoments(refresh: true) }
                 )
             }
         }
@@ -57,12 +58,23 @@ struct NativeThreadView: View {
             loadOnboarding()
             loadMoments(refresh: false)
         }
+        .onChange(of: showConnect) { open in
+            if !open { loadMoments(refresh: true) }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosShowConnect)) { _ in
             showConnect = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosRefreshThread)) { _ in
             loadMoments(refresh: true)
         }
+    }
+
+    private var emptyStateMessage: String {
+        if !errorMessage.isEmpty { return errorMessage }
+        if FdaChecker.loadPersistedStatus() != .granted {
+            return "Grant Full Disk Access in Settings so iMessage can sync."
+        }
+        return "Cards are ready on the server. Tap Load Thread or open Connect."
     }
 
     private var topBar: some View {
@@ -123,19 +135,31 @@ struct NativeThreadView: View {
         } else if moments.isEmpty {
             Spacer()
             VStack(spacing: 12) {
-                Text(errorMessage.isEmpty ? "Still listening. Link iMessage or refresh when there is more signal." : errorMessage)
+                Text(emptyStateMessage)
                     .font(.system(size: 14))
                     .foregroundColor(CosmosTheme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
-                Button("Connect iMessage") { showConnect = true }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(CosmosTheme.accent)
-                    .foregroundColor(.black)
-                    .cornerRadius(980)
+                HStack(spacing: 10) {
+                    Button("Load Thread") { loadMoments(refresh: true) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(CosmosTheme.accent)
+                        .foregroundColor(.black)
+                        .cornerRadius(980)
+                        .disabled(refreshing)
+                    Button("Connect") { showConnect = true }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(CosmosTheme.surfaceRaised)
+                        .foregroundColor(CosmosTheme.text)
+                        .overlay(RoundedRectangle(cornerRadius: 980).stroke(CosmosTheme.border))
+                        .cornerRadius(980)
+                }
             }
             Spacer()
         } else if let moment = active {

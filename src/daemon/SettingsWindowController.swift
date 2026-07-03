@@ -23,7 +23,6 @@ final class SettingsWindowController: NSWindowController {
 
         let view = NativeSettingsView(
             onOpenThread: { [weak menuApp] in menuApp?.presentThread() },
-            onOpenConnect: { [weak menuApp] in menuApp?.presentConnect() },
             onOpenFdaSettings: { [weak menuApp] in menuApp?.openFullDiskAccessSettings() },
             onRecheckFda: { [weak menuApp] in
                 menuApp?.currentFdaStatus = FdaChecker.loadPersistedStatus()

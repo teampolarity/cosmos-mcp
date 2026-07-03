@@ -4,10 +4,10 @@ import SwiftUI
 
 struct NativeSettingsView: View {
     var onOpenThread: () -> Void = {}
-    var onOpenConnect: () -> Void = {}
     var onOpenFdaSettings: () -> Void = {}
     var onRecheckFda: () -> Void = {}
     var onMenuRebuild: () -> Void = {}
+    @State private var showConnect = false
     @State private var tab = 0
     @State private var fdaStatus: FdaStatus = FdaChecker.loadPersistedStatus()
     @State private var syncConfig = SyncConfig.load()
@@ -18,27 +18,41 @@ struct NativeSettingsView: View {
     @State private var version = "v\(McpRunner.packageVersion)"
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                Text("Overview").tag(0)
-                Text("Schedule").tag(1)
-                Text("Advanced").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .padding(16)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if tab == 0 { overviewTab }
-                    if tab == 1 { scheduleTab }
-                    if tab == 2 { advancedTab }
+        ZStack {
+            VStack(spacing: 0) {
+                Picker("", selection: $tab) {
+                    Text("Overview").tag(0)
+                    Text("Schedule").tag(1)
+                    Text("Advanced").tag(2)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .pickerStyle(.segmented)
+                .padding(16)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if tab == 0 { overviewTab }
+                        if tab == 1 { scheduleTab }
+                        if tab == 2 { advancedTab }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(CosmosTheme.void)
+
+            if showConnect {
+                ConnectSheetView(
+                    onClose: { showConnect = false },
+                    onOpenSettings: { showConnect = false },
+                    onLoadThread: {
+                        showConnect = false
+                        onOpenThread()
+                        NotificationCenter.default.post(name: .cosmosRefreshThread, object: nil)
+                    }
+                )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(CosmosTheme.void)
         .onAppear(perform: refreshLocalState)
     }
 
@@ -68,7 +82,7 @@ struct NativeSettingsView: View {
                 .foregroundColor(CosmosTheme.textMuted)
             HStack(spacing: 8) {
                 cosmosButton("Open Thread", primary: true) { onOpenThread() }
-                cosmosButton("Connect", primary: false) { onOpenConnect() }
+                cosmosButton("Connect", primary: false) { showConnect = true }
             }
         }
     }

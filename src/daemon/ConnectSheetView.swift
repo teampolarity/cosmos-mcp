@@ -5,15 +5,17 @@ import SwiftUI
 struct ConnectSheetView: View {
     var onClose: () -> Void = {}
     var onOpenSettings: () -> Void = {}
+    var onLoadThread: () -> Void = {}
 
     @State private var syncHint = ""
     @State private var momentCount = 0
-    @State private var loading = true
     @State private var handlerMessage = ""
 
     private var fda: FdaStatus { FdaChecker.loadPersistedStatus() }
+    private var signedIn: Bool { CosmosAuthStore.isAuthenticated() }
     private var mcpReady: Bool { McpKeyStore.isProvisioned }
     private var handlerReady: Bool { McpKeyStore.handlerInstalled }
+    private var imessageReady: Bool { fda == .granted }
 
     var body: some View {
         ZStack {
@@ -30,9 +32,14 @@ struct ConnectSheetView: View {
                         .foregroundColor(CosmosTheme.textMuted)
                 }
 
-                statusRow("Sign in", CosmosAuthStore.isAuthenticated() ? "signed in" : "required", ok: CosmosAuthStore.isAuthenticated())
+                Text("Thread needs sign-in + iMessage sync. MCP key is only for Cursor and Claude.")
+                    .font(.system(size: 11))
+                    .foregroundColor(CosmosTheme.textFaint)
+
+                statusRow("Sign in", signedIn ? "signed in" : "required", ok: signedIn)
                 statusRow("Full Disk Access", fdaLabel, ok: fda == .granted)
-                statusRow("MCP key", mcpReady ? "provisioned" : "not set", ok: mcpReady)
+                statusRow("iMessage sync", imessageHint, ok: imessageReady && syncHint.contains("connected"))
+                statusRow("MCP key (Cursor)", mcpReady ? "provisioned" : "optional", ok: mcpReady)
                 statusRow("URL handler", handlerReady ? "installed" : "optional", ok: handlerReady)
 
                 if !syncHint.isEmpty {
@@ -41,9 +48,9 @@ struct ConnectSheetView: View {
                         .foregroundColor(CosmosTheme.textMuted)
                 }
                 if momentCount > 0 {
-                    Text("\(momentCount) cards in Thread")
-                        .font(.system(size: 12))
-                        .foregroundColor(CosmosTheme.textSecondary)
+                    Text("\(momentCount) cards ready in Thread")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(CosmosTheme.accent)
                 }
                 if !handlerMessage.isEmpty {
                     Text(handlerMessage)
@@ -52,24 +59,39 @@ struct ConnectSheetView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    actionButton("Open Connectors (mint MCP key)", primary: true) {
-                        if let url = URL(string: "https://cosmos.polarity-lab.com/connectors") {
-                            NSWorkspace.shared.open(url)
+                    if momentCount > 0 {
+                        actionButton("Load Thread", primary: true) {
+                            onLoadThread()
+                            onClose()
                         }
                     }
-                    if !handlerReady {
+                    if !mcpReady {
+                        actionButton("Open Connectors (mint MCP key)", primary: momentCount == 0) {
+                            if let url = URL(string: "https://cosmos.polarity-lab.com/connectors") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                    }
+                    if !handlerReady && !mcpReady {
                         actionButton("Install cosmos-mcp:// handler", primary: false) {
                             installHandler()
                         }
                     }
-                    actionButton("Open Settings", primary: false) {
-                        onClose()
-                        onOpenSettings()
+                    if fda == .denied {
+                        actionButton("Grant Full Disk Access", primary: true) {
+                            onClose()
+                            onOpenSettings()
+                        }
+                    } else {
+                        actionButton("Open Settings", primary: false) {
+                            onClose()
+                            onOpenSettings()
+                        }
                     }
                 }
             }
             .padding(20)
-            .frame(maxWidth: 380)
+            .frame(maxWidth: 400)
             .background(CosmosTheme.surfaceRaised)
             .cornerRadius(16)
         }
@@ -83,6 +105,12 @@ struct ConnectSheetView: View {
         case .noImessage: return "no Messages db"
         case .unknown: return "checking…"
         }
+    }
+
+    private var imessageHint: String {
+        if fda != .granted { return "needs FDA" }
+        if syncHint.contains("connected") { return "connected" }
+        return "sync from Settings"
     }
 
     private func statusRow(_ label: String, _ value: String, ok: Bool) -> some View {
@@ -119,16 +147,14 @@ struct ConnectSheetView: View {
             let result = McpRunner.run(["install-handler"])
             DispatchQueue.main.async {
                 handlerMessage = result.ok
-                    ? "Handler installed. Use Open in cosmos-mcp from Connectors."
+                    ? "Handler installed. Tap Open in cosmos-mcp from Connectors."
                     : McpRunner.formatOutput(result)
             }
         }
     }
 
     private func refreshCloudStatus() {
-        loading = true
         CosmosAPIClient.fetchSyncStatus { result in
-            loading = false
             if case .success(let hint) = result { syncHint = hint }
         }
         CosmosAPIClient.fetchMoments { result in
