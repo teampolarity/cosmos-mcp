@@ -2,7 +2,7 @@ const NPM_URL = "https://www.npmjs.com/package/@polarity-lab/cosmos-mcp";
 const REPO_URL = "https://github.com/teampolarity/cosmos-mcp";
 const COSMOS_URL = "https://cosmos.polarity-lab.com";
 const INSTALL_SCRIPT_URL = `${COSMOS_URL}/install.sh`;
-const PACKAGE_VERSION = "0.9.25";
+const PACKAGE_VERSION = "0.9.28";
 
 // Static MCP server card. Generated from src/tools/index.ts via scripts/gen-server-card.mjs.
 // Smithery reads this from /.well-known/mcp/server-card.json to skip its scan step

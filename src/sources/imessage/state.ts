@@ -9,11 +9,15 @@ export interface HandleEntry {
   name?: string;
   content_enabled: boolean;
   role?: string;
+  caption_images?: boolean;
+  propose_photos?: boolean;
 }
 
 export interface ThreadEntry {
   last_turn_id_synced: string;
   participants: string[];
+  caption_images?: boolean;
+  propose_photos?: boolean;
 }
 
 export interface ImessageState {

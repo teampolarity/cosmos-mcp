@@ -20,6 +20,8 @@ import { promises as fs } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
+import type { ImessageState } from "./state.js";
+import type { MediaPrefs } from "./media-prefs.js";
 
 interface QueueItem {
   turn_id: string;
@@ -54,6 +56,9 @@ export interface CaptionOptions {
   fetch?: typeof globalThis.fetch;
   delayMs?: number;
   progress?: boolean;
+  captionMode?: MediaPrefs["caption_mode"];
+  skipKinds?: string[];
+  imessageState?: ImessageState | null;
 }
 
 export interface CaptionTotals {
