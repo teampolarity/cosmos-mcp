@@ -44,7 +44,13 @@ struct NativeThreadView: View {
             }
 
             if showConnect {
-                connectSheet
+                ConnectSheetView(
+                    onClose: { showConnect = false },
+                    onOpenSettings: {
+                        showConnect = false
+                        onOpenSettings()
+                    }
+                )
             }
         }
         .onAppear {
@@ -261,44 +267,6 @@ struct NativeThreadView: View {
             .background(CosmosTheme.surfaceRaised)
             .cornerRadius(16)
             .padding(24)
-        }
-    }
-
-    private var connectSheet: some View {
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
-                .onTapGesture { showConnect = false }
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Connect")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Install Cosmos sync on this Mac, grant Full Disk Access, then mint an MCP key for Cursor.")
-                    .font(.system(size: 13))
-                    .foregroundColor(CosmosTheme.textMuted)
-                Button("Open Settings") {
-                    showConnect = false
-                    onOpenSettings()
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(CosmosTheme.accent)
-                .foregroundColor(.black)
-                .cornerRadius(980)
-                Button("Connectors in browser") {
-                    if let url = URL(string: "https://cosmos.polarity-lab.com/connectors") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(CosmosTheme.accent)
-                Button("Close") { showConnect = false }
-                    .buttonStyle(.plain)
-                    .foregroundColor(CosmosTheme.textMuted)
-            }
-            .padding(20)
-            .frame(maxWidth: 360)
-            .background(CosmosTheme.surfaceRaised)
-            .cornerRadius(16)
         }
     }
 

@@ -63,6 +63,9 @@ struct NativeSettingsView: View {
                     .foregroundColor(CosmosTheme.textSecondary)
             }
             sectionTitle("Thread")
+            Text("MCP key: \(McpKeyStore.isProvisioned ? "provisioned" : "not set — use Connect")")
+                .font(.system(size: 12))
+                .foregroundColor(CosmosTheme.textMuted)
             HStack(spacing: 8) {
                 cosmosButton("Open Thread", primary: true) { onOpenThread() }
                 cosmosButton("Connect", primary: false) { onOpenConnect() }

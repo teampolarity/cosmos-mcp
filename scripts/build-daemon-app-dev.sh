@@ -44,6 +44,8 @@ build_universal cosmos-sync \
   src/daemon/SyncConfigStore.swift \
   src/daemon/CosmosAPIClient.swift \
   src/daemon/CosmosNotifications.swift \
+  src/daemon/McpKeyStore.swift \
+  src/daemon/ConnectSheetView.swift \
   src/daemon/NativeSettingsView.swift \
   src/daemon/NativeThreadView.swift \
   src/daemon/SettingsWindowController.swift \

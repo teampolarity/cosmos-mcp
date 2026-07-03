@@ -215,7 +215,17 @@ enum CosmosAPIClient {
         request(path: "/api/me/sync-status") { result in
             switch result {
             case .success(let json):
-                let hint = json["hint"] as? String ?? json["status"] as? String ?? "unknown"
+                if let local = json["local"] as? [String: Any],
+                   let im = local["imessage"] as? [String: Any],
+                   let connected = im["connected"] as? Bool {
+                    let ago = im["last_ago"] as? String ?? ""
+                    let turns = im["turn_count"] as? Int ?? 0
+                    if connected {
+                        completion(.success("iMessage connected · \(turns) turns · last sync \(ago)"))
+                        return
+                    }
+                }
+                let hint = json["hint"] as? String ?? json["status"] as? String ?? "sync status unknown"
                 completion(.success(hint))
             case .failure(let err):
                 completion(.failure(err))
