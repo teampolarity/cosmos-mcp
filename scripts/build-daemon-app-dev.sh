@@ -84,11 +84,12 @@ bash "$(dirname "$0")/render-app-icons.sh" "$CONTENTS/Resources"
 # TCC (Full Disk Access) binds to the code signature, not the display name.
 # Linker-signed swiftc binaries show as "cosmos-sync-arm64" and break FDA
 # after every rebuild. Sign the bundle so CFBundleIdentifier is authoritative.
-ENTITLEMENTS="$(dirname "$0")/Cosmos.entitlements"
+# Sign in with Apple entitlement requires the capability on the bundle id in
+# Apple Developer *and* a notarized build. Embedding it without that setup
+# makes macOS refuse to launch (generic "can't be opened"). Magic-code login
+# works without this entitlement; re-enable after SIWA is provisioned + notarized.
 SIGN_ENT_ARGS=()
-if [[ -f "$ENTITLEMENTS" ]]; then
-  SIGN_ENT_ARGS=(--entitlements "$ENTITLEMENTS")
-fi
+# ENTITLEMENTS="$(dirname "$0")/Cosmos.entitlements"
 
 DEV_SIGN="${SIGN_IDENTITY:-}"
 if [[ -z "$DEV_SIGN" ]]; then
@@ -96,9 +97,9 @@ if [[ -z "$DEV_SIGN" ]]; then
 fi
 if [[ -n "$DEV_SIGN" ]]; then
   echo "→ signing with: $DEV_SIGN"
-  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync-daemon"
-  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync"
-  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "${SIGN_ENT_ARGS[@]}" "$OUT_DIR"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "$MACOS/cosmos-sync-daemon"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "$MACOS/cosmos-sync"
+  codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "$OUT_DIR"
 else
   echo "→ signing adhoc (grant Full Disk Access again after each rebuild)"
   codesign --force --sign - "$MACOS/cosmos-sync-daemon"

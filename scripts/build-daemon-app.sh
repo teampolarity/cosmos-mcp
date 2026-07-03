@@ -88,18 +88,12 @@ EOF
 
 bash "$(dirname "$0")/render-app-icons.sh" "$CONTENTS/Resources"
 
-ENTITLEMENTS="$(dirname "$0")/Cosmos.entitlements"
-SIGN_ENT_ARGS=()
-if [[ -f "$ENTITLEMENTS" ]]; then
-  SIGN_ENT_ARGS=(--entitlements "$ENTITLEMENTS")
-fi
-
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync-daemon"
+  "$MACOS/cosmos-sync-daemon"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$MACOS/cosmos-sync"
+  "$MACOS/cosmos-sync"
 codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
-  "${SIGN_ENT_ARGS[@]}" "$OUT_DIR"
+  "$OUT_DIR"
 
 codesign --verify --deep --strict --verbose=2 "$OUT_DIR"
 spctl --assess --type execute --verbose=4 "$OUT_DIR" || true
