@@ -10,7 +10,8 @@ struct NativeThreadView: View {
     @State private var loading = true
     @State private var refreshing = false
     @State private var errorMessage = ""
-    @State private var statusMessage = ""
+    @State private var replyStatus = ""
+    @State private var threadStatus = ""
     @State private var replyText = ""
     @State private var sheetMoment: ThreadMoment?
     @State private var provenance: [ProvenanceStep] = []
@@ -22,6 +23,10 @@ struct NativeThreadView: View {
     @State private var showOnboarding = false
     @State private var loadGeneration = 0
     @State private var didNudgeConnect = false
+    @State private var compilePolls = 0
+
+    private let maxCompilePolls = 12
+    private let compilePollInterval: TimeInterval = 5
 
     private var active: ThreadMoment? {
         guard !moments.isEmpty, index >= 0, index < moments.count else { return nil }
@@ -69,7 +74,7 @@ struct NativeThreadView: View {
             showConnect = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosRefreshThread)) { _ in
-            loadMoments(refresh: true)
+            loadMoments(refresh: true, preserveMomentId: active?.id)
         }
     }
 
@@ -119,7 +124,15 @@ struct NativeThreadView: View {
                     if moments.count > 1 {
                         circleIconButton("→", disabled: index >= moments.count - 1) { index += 1 }
                     }
-                    circleIconButton("↻", disabled: refreshing) { loadMoments(refresh: true) }
+                    circleIconButton("↻", disabled: refreshing) {
+                        loadMoments(refresh: true, preserveMomentId: active?.id)
+                    }
+                }
+                if !threadStatus.isEmpty && !moments.isEmpty {
+                    Text(threadStatus)
+                        .font(.system(size: 10))
+                        .foregroundColor(CosmosTheme.textMuted)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -190,10 +203,10 @@ struct NativeThreadView: View {
 
     private var composeBar: some View {
         VStack(spacing: 6) {
-            if !statusMessage.isEmpty {
-                Text(statusMessage)
+            if !replyStatus.isEmpty {
+                Text(replyStatus)
                     .font(.system(size: 11))
-                    .foregroundColor(statusMessage == "sent" ? CosmosTheme.ok : CosmosTheme.err)
+                    .foregroundColor(replyStatus == "sent" ? CosmosTheme.ok : CosmosTheme.err)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 4)
             }
@@ -391,36 +404,82 @@ struct NativeThreadView: View {
         }
     }
 
-    private func loadMoments(refresh: Bool, preserveMomentId: String? = nil) {
-        let gen = loadGeneration + 1
-        loadGeneration = gen
-        refreshing = refresh
-        loading = moments.isEmpty && !refresh
-        if !refresh { errorMessage = "" }
+    private func loadMoments(refresh: Bool, preserveMomentId: String? = nil, isPoll: Bool = false) {
+        if !isPoll {
+            loadGeneration += 1
+            if refresh { compilePolls = 0 }
+        }
+        let gen = loadGeneration
+        refreshing = refresh || isPoll
+        loading = moments.isEmpty && !refresh && !isPoll
+        if !refresh && !isPoll { errorMessage = "" }
+        if refresh && !isPoll { threadStatus = "recompiling…" }
         CosmosAPIClient.fetchMoments(refresh: refresh) { result in
             guard gen == loadGeneration else { return }
             loading = false
-            refreshing = false
             switch result {
-            case .success(let (list, _, compiling)):
+            case .success(let (list, recompiled, compiling)):
                 moments = list
                 if let preserveId = preserveMomentId,
                    let newIndex = list.firstIndex(where: { $0.id == preserveId }) {
                     index = newIndex
+                } else if refresh && !isPoll {
+                    index = 0
                 } else if index >= list.count {
                     index = max(0, list.count - 1)
                 }
                 if list.isEmpty {
-                    if compiling {
-                        errorMessage = "Thread is compiling on the server. Tap Load Thread again in a few seconds."
-                    } else {
+                    if compiling && compilePolls < maxCompilePolls {
+                        compilePolls += 1
+                        refreshing = true
+                        threadStatus = "compiling… (\(compilePolls)/\(maxCompilePolls))"
                         errorMessage = ""
+                        DispatchQueue.main.asyncAfter(deadline: .now() + compilePollInterval) {
+                            guard gen == loadGeneration else { return }
+                            loadMoments(refresh: false, preserveMomentId: preserveMomentId, isPoll: true)
+                        }
+                    } else {
+                        refreshing = false
+                        if compiling {
+                            errorMessage = "Thread is compiling on the server. Tap ↻ or wait a few seconds."
+                        } else {
+                            errorMessage = ""
+                        }
+                        threadStatus = compiling ? "compiling…" : ""
                     }
                 } else {
                     errorMessage = ""
+                    if compiling && compilePolls < maxCompilePolls {
+                        compilePolls += 1
+                        refreshing = true
+                        threadStatus = "recompiling… (\(compilePolls)/\(maxCompilePolls))"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + compilePollInterval) {
+                            guard gen == loadGeneration else { return }
+                            loadMoments(refresh: false, preserveMomentId: preserveMomentId, isPoll: true)
+                        }
+                    } else {
+                        refreshing = false
+                        compilePolls = 0
+                        if refresh || recompiled {
+                            let n = list.filter { $0.kind != "caught_up" }.count
+                            threadStatus = recompiled ? "recompiled · \(n) cards" : "up to date"
+                        } else if !isPoll {
+                            threadStatus = compiling ? "updating…" : ""
+                        }
+                        if !threadStatus.isEmpty && threadStatus != "recompiling…" {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                if threadStatus.hasPrefix("recompiled") || threadStatus == "up to date" {
+                                    threadStatus = ""
+                                }
+                            }
+                        }
+                    }
                 }
             case .failure(let err):
+                refreshing = false
+                compilePolls = 0
                 errorMessage = err.message
+                threadStatus = err.message
             }
         }
     }
@@ -474,19 +533,19 @@ struct NativeThreadView: View {
         guard let moment = active, moment.canReply else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        statusMessage = ""
+        replyStatus = ""
         let momentId = moment.id
         CosmosAPIClient.reply(momentId: moment.id, body: text) { result in
             switch result {
             case .success:
                 replyText = ""
-                statusMessage = "sent"
+                replyStatus = "sent"
                 loadMoments(refresh: true, preserveMomentId: momentId)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    if statusMessage == "sent" { statusMessage = "" }
+                    if replyStatus == "sent" { replyStatus = "" }
                 }
             case .failure(let err):
-                statusMessage = err.message
+                replyStatus = err.message
             }
         }
     }
