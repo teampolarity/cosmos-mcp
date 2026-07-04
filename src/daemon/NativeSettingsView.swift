@@ -159,8 +159,7 @@ struct NativeSettingsView: View {
             }
         }
         .padding(14)
-        .background(CosmosTheme.surfaceRaised)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CosmosTheme.border))
+        .cosmosRoundedRect(12, fill: CosmosTheme.surfaceRaised, stroke: CosmosTheme.border)
     }
 
     private var fdaColor: Color {
@@ -216,10 +215,11 @@ struct NativeSettingsView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(primary ? CosmosTheme.accent : CosmosTheme.surfaceRaised)
                 .foregroundColor(primary ? .black : CosmosTheme.text)
-                .overlay(RoundedRectangle(cornerRadius: 980).stroke(primary ? Color.clear : CosmosTheme.border))
-                .cornerRadius(980)
+                .cosmosCapsule(
+                    fill: primary ? CosmosTheme.accent : CosmosTheme.surfaceRaised,
+                    stroke: primary ? nil : CosmosTheme.border
+                )
         }
         .buttonStyle(.plain)
     }

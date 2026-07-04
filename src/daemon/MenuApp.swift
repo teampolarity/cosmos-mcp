@@ -60,6 +60,12 @@ final class CosmosMenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCe
         refreshTimer?.invalidate()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            McpURLHandler.handle(url, notify: notify)
+        }
+    }
+
     // MARK: - Menu bar icon
 
     private enum IconState {

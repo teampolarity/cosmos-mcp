@@ -15,6 +15,7 @@ struct NativeThreadView: View {
     @State private var sheetMoment: ThreadMoment?
     @State private var provenance: [ProvenanceStep] = []
     @State private var provenanceLoading = false
+    @State private var provenanceFailed = false
     @State private var moments: [ThreadMoment] = []
     @State private var onboarding: ThreadOnboardingStatus?
     @State private var onboardingAnswer = ""
@@ -90,10 +91,8 @@ struct NativeThreadView: View {
                     .textCase(.uppercase)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(CosmosTheme.accentDim)
                     .foregroundColor(CosmosTheme.accent)
-                    .overlay(RoundedRectangle(cornerRadius: 980).stroke(CosmosTheme.accent.opacity(0.35)))
-                    .cornerRadius(980)
+                    .cosmosCapsule(fill: CosmosTheme.accentDim, stroke: CosmosTheme.accent.opacity(0.35))
                     .buttonStyle(.plain)
             }
 
@@ -147,19 +146,16 @@ struct NativeThreadView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(CosmosTheme.accent)
                         .foregroundColor(.black)
-                        .cornerRadius(980)
+                        .cosmosCapsule(fill: CosmosTheme.accent)
                         .disabled(refreshing)
                     Button("Connect") { showConnect = true }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(CosmosTheme.surfaceRaised)
                         .foregroundColor(CosmosTheme.text)
-                        .overlay(RoundedRectangle(cornerRadius: 980).stroke(CosmosTheme.border))
-                        .cornerRadius(980)
+                        .cosmosCapsule(fill: CosmosTheme.surfaceRaised, stroke: CosmosTheme.border)
                 }
             }
             Spacer()
@@ -179,35 +175,40 @@ struct NativeThreadView: View {
                     .textCase(.uppercase)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(CosmosTheme.surfaceRaised)
-                    .overlay(RoundedRectangle(cornerRadius: 980).stroke(CosmosTheme.border))
                     .foregroundColor(CosmosTheme.textSecondary)
+                    .cosmosCapsule(fill: CosmosTheme.surface, stroke: CosmosTheme.border)
                     .buttonStyle(.plain)
                 }
                 .padding(16)
-                .background(CosmosTheme.surfaceRaised)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(CosmosTheme.border))
+                .cosmosRoundedRect(16, fill: CosmosTheme.surfaceRaised, stroke: CosmosTheme.border)
                 .padding(12)
             }
         }
     }
 
     private var composeBar: some View {
-        HStack(spacing: 8) {
-            TextField(active?.canReply == true ? "reply…" : "reply on a person card…", text: $replyText)
-                .textFieldStyle(.plain)
-                .padding(10)
-                .background(CosmosTheme.surfaceRaised)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(CosmosTheme.border))
-                .disabled(active?.canReply != true)
-            Button("↑") { sendReply() }
-                .font(.system(size: 16, weight: .bold))
-                .frame(width: 40, height: 40)
-                .background(CosmosTheme.accentDim)
-                .foregroundColor(CosmosTheme.accent)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(CosmosTheme.accent.opacity(0.35)))
-                .buttonStyle(.plain)
-                .disabled(active?.canReply != true || replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        VStack(spacing: 6) {
+            if !statusMessage.isEmpty {
+                Text(statusMessage)
+                    .font(.system(size: 11))
+                    .foregroundColor(statusMessage == "sent" ? CosmosTheme.ok : CosmosTheme.err)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
+            HStack(spacing: 8) {
+                TextField(active?.canReply == true ? "reply…" : "reply on a person card…", text: $replyText)
+                    .textFieldStyle(.plain)
+                    .padding(10)
+                    .cosmosRoundedRect(12, fill: CosmosTheme.surfaceRaised, stroke: CosmosTheme.border)
+                    .disabled(active?.canReply != true)
+                Button("↑") { sendReply() }
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(width: 40, height: 40)
+                    .foregroundColor(CosmosTheme.accent)
+                    .cosmosRoundedRect(10, fill: CosmosTheme.accentDim, stroke: CosmosTheme.accent.opacity(0.35))
+                    .buttonStyle(.plain)
+                    .disabled(active?.canReply != true || replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
         .padding(12)
     }
@@ -248,6 +249,11 @@ struct NativeThreadView: View {
                         if !moment.sheet.whatWeSaw.isEmpty {
                             sheetSection("What we saw", moment.sheet.whatWeSaw)
                         }
+                        if !moment.sheet.receipts.isEmpty {
+                            Text("From your texts")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(CosmosTheme.text)
+                        }
                         ForEach(moment.sheet.receipts) { r in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(r.label.uppercased())
@@ -263,16 +269,28 @@ struct NativeThreadView: View {
                                     .foregroundColor(CosmosTheme.text)
                             }
                             .padding(12)
-                            .background(CosmosTheme.surface)
-                            .cornerRadius(10)
+                            .cosmosRoundedRect(10, fill: CosmosTheme.surface)
                         }
                         if !moment.sheet.read.isEmpty {
                             sheetSection("Why the card says that", moment.sheet.read)
                         }
-                        if provenanceLoading {
-                            Text("Tracing connector sources…")
-                                .font(.system(size: 12))
-                                .foregroundColor(CosmosTheme.textMuted)
+                        if moment.sheet.traceNodeId != nil {
+                            Text("From your connectors")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(CosmosTheme.text)
+                            if provenanceLoading {
+                                Text("Tracing connector sources…")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(CosmosTheme.textMuted)
+                            } else if provenanceFailed {
+                                Text("Could not load connector receipts. Try again.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(CosmosTheme.textMuted)
+                            } else if provenance.isEmpty {
+                                Text("No connector receipts for this person yet. Link iMessage sync to deepen the trail.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(CosmosTheme.textMuted)
+                            }
                         }
                         ForEach(provenance) { step in
                             VStack(alignment: .leading, spacing: 4) {
@@ -285,16 +303,20 @@ struct NativeThreadView: View {
                                 }
                             }
                             .padding(12)
-                            .background(CosmosTheme.surface)
-                            .cornerRadius(10)
+                            .cosmosRoundedRect(10, fill: CosmosTheme.surface)
+                        }
+                        if !moment.sheet.lens.isEmpty {
+                            Text(moment.sheet.lens)
+                                .font(.system(size: 11))
+                                .foregroundColor(CosmosTheme.textFaint)
+                                .padding(.top, 4)
                         }
                     }
                     .padding(16)
                 }
             }
             .frame(maxWidth: 420, maxHeight: 520)
-            .background(CosmosTheme.surfaceRaised)
-            .cornerRadius(16)
+            .cosmosRoundedRect(16, fill: CosmosTheme.surfaceRaised)
             .padding(24)
         }
     }
@@ -324,24 +346,21 @@ struct NativeThreadView: View {
                 TextEditor(text: $onboardingAnswer)
                     .frame(height: 80)
                     .padding(8)
-                    .background(CosmosTheme.surface)
-                    .cornerRadius(8)
+                    .cosmosRoundedRect(8, fill: CosmosTheme.surface)
                 HStack {
                     Button("Skip") { submitOnboarding(skip: true) }
                     Spacer()
                     Button("Continue") { submitOnboarding(skip: false) }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(CosmosTheme.accent)
                         .foregroundColor(.black)
-                        .cornerRadius(980)
+                        .cosmosCapsule(fill: CosmosTheme.accent)
                 }
                 .buttonStyle(.plain)
             }
             .padding(20)
             .frame(maxWidth: 380)
-            .background(CosmosTheme.surfaceRaised)
-            .cornerRadius(16)
+            .cosmosRoundedRect(16, fill: CosmosTheme.surfaceRaised)
         }
     }
 
@@ -384,20 +403,38 @@ struct NativeThreadView: View {
     }
 
     private func submitOnboarding(skip: Bool) {
-        CosmosAPIClient.submitOnboarding(answer: onboardingAnswer, skip: skip) { _ in
-            showOnboarding = false
-            onboarding = nil
+        CosmosAPIClient.submitOnboarding(answer: onboardingAnswer, skip: skip) { result in
+            switch result {
+            case .success(let ob):
+                onboardingAnswer = ""
+                if ob.complete {
+                    showOnboarding = false
+                    onboarding = nil
+                } else {
+                    onboarding = ob
+                    showOnboarding = true
+                }
+            case .failure:
+                showOnboarding = false
+                onboarding = nil
+            }
         }
     }
 
     private func openSheet(_ moment: ThreadMoment) {
         sheetMoment = moment
         provenance = []
+        provenanceFailed = false
         guard let nodeId = moment.sheet.traceNodeId else { return }
         provenanceLoading = true
         CosmosAPIClient.fetchProvenance(nodeId: nodeId) { result in
             provenanceLoading = false
-            if case .success(let steps) = result { provenance = steps }
+            switch result {
+            case .success(let steps):
+                provenance = steps
+            case .failure:
+                provenanceFailed = true
+            }
         }
     }
 
@@ -405,11 +442,15 @@ struct NativeThreadView: View {
         guard let moment = active, moment.canReply else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        statusMessage = ""
         CosmosAPIClient.reply(momentId: moment.id, body: text) { result in
             switch result {
             case .success:
                 replyText = ""
                 statusMessage = "sent"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if statusMessage == "sent" { statusMessage = "" }
+                }
             case .failure(let err):
                 statusMessage = err.message
             }

@@ -1,4 +1,4 @@
-// Shared Cosmos GPS palette for native SwiftUI surfaces.
+// Shared Cosmos GPS palette + SwiftUI chrome helpers.
 
 import SwiftUI
 
@@ -16,4 +16,33 @@ enum CosmosTheme {
     static let ok = Color(red: 0.204, green: 0.827, blue: 0.6)
     static let err = Color(red: 0.973, green: 0.443, blue: 0.443)
     static let warn = Color(red: 0.984, green: 0.749, blue: 0.141)
+}
+
+extension View {
+    /// Pill button/card — fill + optional stroke, clipped to capsule (no square bleed).
+    func cosmosCapsule(fill: Color, stroke: Color? = nil, lineWidth: CGFloat = 1) -> some View {
+        background(Capsule(style: .continuous).fill(fill))
+            .overlay(
+                Group {
+                    if let stroke {
+                        Capsule(style: .continuous).strokeBorder(stroke, lineWidth: lineWidth)
+                    }
+                }
+            )
+            .clipShape(Capsule(style: .continuous))
+    }
+
+    /// Rounded rect panel — use for cards, fields, square-ish buttons.
+    func cosmosRoundedRect(_ radius: CGFloat, fill: Color, stroke: Color? = nil, lineWidth: CGFloat = 1) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        return background(shape.fill(fill))
+            .overlay(
+                Group {
+                    if let stroke {
+                        shape.strokeBorder(stroke, lineWidth: lineWidth)
+                    }
+                }
+            )
+            .clipShape(shape)
+    }
 }

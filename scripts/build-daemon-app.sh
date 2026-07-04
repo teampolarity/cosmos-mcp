@@ -52,6 +52,7 @@ build_universal cosmos-sync \
   src/daemon/CosmosAPIClient.swift \
   src/daemon/CosmosNotifications.swift \
   src/daemon/McpKeyStore.swift \
+  src/daemon/McpURLHandler.swift \
   src/daemon/ConnectSheetView.swift \
   src/daemon/NativeSettingsView.swift \
   src/daemon/NativeThreadView.swift \
@@ -79,6 +80,14 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>LSHasLocalizedDisplayName</key><true/>
   <key>NSHumanReadableCopyright</key><string>© Polarity Lab</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>com.polaritylab.cosmos-mcp</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>cosmos-mcp</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 EOF

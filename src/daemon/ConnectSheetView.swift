@@ -30,7 +30,7 @@ struct ConnectSheetView: View {
                         .foregroundColor(CosmosTheme.textMuted)
                 }
 
-                Text("Thread needs sign-in + iMessage sync. MCP key is only for Cursor and Claude.")
+                Text("Thread needs sign-in + iMessage sync. MCP key is only for Cursor. Tap Open in Cosmos from Connectors to save the key.")
                     .font(.system(size: 11))
                     .foregroundColor(CosmosTheme.textFaint)
 
@@ -38,7 +38,7 @@ struct ConnectSheetView: View {
                 statusRow("Full Disk Access", fdaLabel, ok: fdaStatus == .granted)
                 statusRow("iMessage sync", imessageHint, ok: fdaStatus == .granted && syncHint.contains("connected"))
                 statusRow("MCP key (Cursor)", mcpReady ? "provisioned" : "optional", ok: mcpReady)
-                statusRow("URL handler", handlerReady ? "installed" : "optional", ok: handlerReady)
+                statusRow("URL handler", "Cosmos app", ok: true)
 
                 if !syncHint.isEmpty {
                     Text(syncHint)
@@ -71,7 +71,7 @@ struct ConnectSheetView: View {
                         }
                     }
                     if !handlerReady && !mcpReady {
-                        actionButton("Install cosmos-mcp:// handler", primary: false) {
+                        actionButton("Install fallback URL handler", primary: false) {
                             installHandler()
                         }
                     }
@@ -90,10 +90,12 @@ struct ConnectSheetView: View {
             }
             .padding(20)
             .frame(maxWidth: 400)
-            .background(CosmosTheme.surfaceRaised)
-            .cornerRadius(16)
+            .cosmosRoundedRect(16, fill: CosmosTheme.surfaceRaised)
         }
         .onAppear(perform: refreshLocalStatus)
+        .onReceive(NotificationCenter.default.publisher(for: .cosmosMcpKeyProvisioned)) { _ in
+            refreshLocalStatus()
+        }
     }
 
     private var fdaLabel: String {
@@ -131,10 +133,11 @@ struct ConnectSheetView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(primary ? CosmosTheme.accent : CosmosTheme.surfaceRaised)
                 .foregroundColor(primary ? .black : CosmosTheme.text)
-                .overlay(RoundedRectangle(cornerRadius: 980).stroke(primary ? Color.clear : CosmosTheme.border))
-                .cornerRadius(980)
+                .cosmosCapsule(
+                    fill: primary ? CosmosTheme.accent : CosmosTheme.surfaceRaised,
+                    stroke: primary ? nil : CosmosTheme.border
+                )
         }
         .buttonStyle(.plain)
     }

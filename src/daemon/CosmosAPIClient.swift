@@ -200,12 +200,24 @@ enum CosmosAPIClient {
         }
     }
 
-    static func submitOnboarding(answer: String?, skip: Bool, completion: @escaping (Result<Void, APIError>) -> Void) {
+    static func submitOnboarding(answer: String?, skip: Bool, completion: @escaping (Result<ThreadOnboardingStatus, APIError>) -> Void) {
         let body: [String: Any] = skip ? ["skip": true] : ["answer": answer ?? ""]
         request(path: "/api/me/thread/onboarding", method: "POST", body: body) { result in
             switch result {
-            case .success: completion(.success(()))
-            case .failure(let err): completion(.failure(err))
+            case .success(let json):
+                if json["ok"] as? Bool == false {
+                    let msg = json["error"] as? String ?? "onboarding failed"
+                    completion(.failure(APIError(message: msg)))
+                    return
+                }
+                completion(.success(ThreadOnboardingStatus(
+                    complete: json["complete"] as? Bool ?? true,
+                    question: json["question"] as? String ?? "",
+                    progress: json["progress"] as? Int ?? 0,
+                    total: json["total"] as? Int ?? 0
+                )))
+            case .failure(let err):
+                completion(.failure(err))
             }
         }
     }
