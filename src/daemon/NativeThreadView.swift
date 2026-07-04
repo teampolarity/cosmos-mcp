@@ -21,6 +21,7 @@ struct NativeThreadView: View {
     @State private var onboardingAnswer = ""
     @State private var showOnboarding = false
     @State private var loadGeneration = 0
+    @State private var didNudgeConnect = false
 
     private var active: ThreadMoment? {
         guard !moments.isEmpty, index >= 0, index < moments.count else { return nil }
@@ -59,6 +60,7 @@ struct NativeThreadView: View {
         .onAppear {
             loadOnboarding()
             loadMoments(refresh: false)
+            maybeNudgeConnect()
         }
         .onChange(of: showConnect) { open in
             if !open && moments.isEmpty { loadMoments(refresh: false) }
@@ -336,9 +338,21 @@ struct NativeThreadView: View {
             Color.black.opacity(0.7).ignoresSafeArea()
             VStack(alignment: .leading, spacing: 12) {
                 if ob.total > 0 {
-                    Text("\(min(ob.progress + 1, ob.total)) / \(ob.total)")
-                        .font(.system(size: 11))
-                        .foregroundColor(CosmosTheme.textFaint)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(min(ob.progress + 1, ob.total)) / \(ob.total)")
+                            .font(.system(size: 11))
+                            .foregroundColor(CosmosTheme.textFaint)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule(style: .continuous)
+                                    .fill(CosmosTheme.surface)
+                                Capsule(style: .continuous)
+                                    .fill(CosmosTheme.accent)
+                                    .frame(width: geo.size.width * progressFraction(ob))
+                            }
+                        }
+                        .frame(height: 3)
+                    }
                 }
                 Text(ob.question)
                     .font(.system(size: 15))
@@ -361,6 +375,19 @@ struct NativeThreadView: View {
             .padding(20)
             .frame(maxWidth: 380)
             .cosmosRoundedRect(16, fill: CosmosTheme.surfaceRaised)
+        }
+    }
+
+    private func progressFraction(_ ob: ThreadOnboardingStatus) -> CGFloat {
+        guard ob.total > 0 else { return 0 }
+        return CGFloat(min(ob.progress + 1, ob.total)) / CGFloat(ob.total)
+    }
+
+    private func maybeNudgeConnect() {
+        guard !didNudgeConnect else { return }
+        didNudgeConnect = true
+        if FdaChecker.loadPersistedStatus() == .denied {
+            showConnect = true
         }
     }
 

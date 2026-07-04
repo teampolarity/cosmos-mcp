@@ -6,6 +6,7 @@
 
 import Database from "better-sqlite3";
 import { Unarchiver } from "node-typedstream";
+import { isLowSignalMessage } from "./low-signal.js";
 
 const APPLE_EPOCH_OFFSET_SECONDS = 978307200;
 
@@ -301,6 +302,7 @@ export async function* readTurns(opts: ReadTurnsOptions): AsyncGenerator<Canonic
       const filteredParticipants = threadParticipants.filter(isHighVolume);
       const allParticipants = ["self", ...filteredParticipants];
       const decodedText = decodeMessageText(r.text, r.attributed_body);
+      if (!decodedText || isLowSignalMessage(decodedText)) { droppedRows++; continue; }
       const links = extractLinks(decodedText);
       const atts = attachmentsByMessageRow.get((r.row_id as bigint).toString());
       chunk.push({
