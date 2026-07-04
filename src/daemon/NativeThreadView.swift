@@ -364,11 +364,11 @@ struct NativeThreadView: View {
         }
     }
 
-    private func loadMoments(refresh: Bool) {
+    private func loadMoments(refresh: Bool, preserveMomentId: String? = nil) {
         let gen = loadGeneration + 1
         loadGeneration = gen
         refreshing = refresh
-        loading = moments.isEmpty
+        loading = moments.isEmpty && !refresh
         if !refresh { errorMessage = "" }
         CosmosAPIClient.fetchMoments(refresh: refresh) { result in
             guard gen == loadGeneration else { return }
@@ -377,7 +377,12 @@ struct NativeThreadView: View {
             switch result {
             case .success(let (list, _, compiling)):
                 moments = list
-                if index >= list.count { index = 0 }
+                if let preserveId = preserveMomentId,
+                   let newIndex = list.firstIndex(where: { $0.id == preserveId }) {
+                    index = newIndex
+                } else if index >= list.count {
+                    index = max(0, list.count - 1)
+                }
                 if list.isEmpty {
                     if compiling {
                         errorMessage = "Thread is compiling on the server. Tap Load Thread again in a few seconds."
@@ -443,11 +448,13 @@ struct NativeThreadView: View {
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         statusMessage = ""
+        let momentId = moment.id
         CosmosAPIClient.reply(momentId: moment.id, body: text) { result in
             switch result {
             case .success:
                 replyText = ""
                 statusMessage = "sent"
+                loadMoments(refresh: true, preserveMomentId: momentId)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     if statusMessage == "sent" { statusMessage = "" }
                 }

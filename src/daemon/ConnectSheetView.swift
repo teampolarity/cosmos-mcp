@@ -14,6 +14,9 @@ struct ConnectSheetView: View {
     @State private var mcpReady = false
     @State private var handlerReady = false
     @State private var fdaStatus: FdaStatus = .unknown
+    @State private var backgroundSyncInstalled = false
+    @State private var installingBackgroundSync = false
+    @State private var backgroundSyncMessage = ""
 
     var body: some View {
         ZStack {
@@ -37,6 +40,7 @@ struct ConnectSheetView: View {
                 statusRow("Sign in", signedIn ? "signed in" : "required", ok: signedIn)
                 statusRow("Full Disk Access", fdaLabel, ok: fdaStatus == .granted)
                 statusRow("iMessage sync", imessageHint, ok: fdaStatus == .granted && syncHint.contains("connected"))
+                statusRow("Background sync", backgroundSyncLabel, ok: backgroundSyncInstalled)
                 statusRow("MCP key (Cursor)", mcpReady ? "provisioned" : "optional", ok: mcpReady)
                 statusRow("URL handler", "Cosmos app", ok: true)
 
@@ -49,6 +53,11 @@ struct ConnectSheetView: View {
                     Text("\(momentCount) cards ready in Thread")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(CosmosTheme.accent)
+                }
+                if !backgroundSyncMessage.isEmpty {
+                    Text(backgroundSyncMessage)
+                        .font(.system(size: 11))
+                        .foregroundColor(CosmosTheme.textSecondary)
                 }
                 if !handlerMessage.isEmpty {
                     Text(handlerMessage)
@@ -74,6 +83,15 @@ struct ConnectSheetView: View {
                         actionButton("Install fallback URL handler", primary: false) {
                             installHandler()
                         }
+                    }
+                    if fdaStatus == .granted && !backgroundSyncInstalled {
+                        actionButton(
+                            installingBackgroundSync ? "Installing background sync…" : "Install background sync",
+                            primary: momentCount == 0 && syncHint.contains("connected")
+                        ) {
+                            installBackgroundSync()
+                        }
+                        .disabled(installingBackgroundSync)
                     }
                     if fdaStatus == .denied {
                         actionButton("Grant Full Disk Access", primary: true) {
@@ -105,6 +123,12 @@ struct ConnectSheetView: View {
         case .noImessage: return "no Messages db"
         case .unknown: return "checking…"
         }
+    }
+
+    private var backgroundSyncLabel: String {
+        if backgroundSyncInstalled { return "installed" }
+        if fdaStatus != .granted { return "needs FDA first" }
+        return "recommended"
     }
 
     private var imessageHint: String {
@@ -147,11 +171,27 @@ struct ConnectSheetView: View {
         fdaStatus = FdaChecker.loadPersistedStatus()
         mcpReady = McpKeyStore.isProvisioned
         handlerReady = McpKeyStore.handlerInstalled
+        backgroundSyncInstalled = AppState.backgroundSyncInstalled
         CosmosAPIClient.fetchSyncStatus { result in
             if case .success(let hint) = result { syncHint = hint }
         }
         CosmosAPIClient.fetchMoments(refresh: false) { result in
             if case .success(let (list, _, _)) = result { momentCount = list.count }
+        }
+    }
+
+    private func installBackgroundSync() {
+        installingBackgroundSync = true
+        backgroundSyncMessage = "Installing…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = McpRunner.run(["daemon", "install"])
+            DispatchQueue.main.async {
+                installingBackgroundSync = false
+                backgroundSyncInstalled = AppState.backgroundSyncInstalled
+                backgroundSyncMessage = result.ok
+                    ? "Background sync runs every few minutes. iMessage stays fresh without manual sync."
+                    : McpRunner.formatOutput(result)
+            }
         }
     }
 
