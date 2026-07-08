@@ -176,6 +176,7 @@ struct MomentReceipt: Identifiable {
     let label: String
     let proofType: String
     let proofStrength: String
+    let claimSupport: String
     let supports: String
     let text: String
 }
@@ -198,6 +199,7 @@ struct MomentSheet {
                 label: parts.joined(separator: " · "),
                 proofType: r["proof_type"] as? String ?? "",
                 proofStrength: r["proof_strength"] as? String ?? "",
+                claimSupport: r["claim_support"] as? String ?? "",
                 supports: r["supports"] as? String ?? "",
                 text: r["text"] as? String ?? ""
             )
