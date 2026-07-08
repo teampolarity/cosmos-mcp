@@ -2,6 +2,95 @@
 
 import Foundation
 
+struct FrictionFace {
+    let inferred: String?
+    let felt: String?
+    let collision: Bool
+
+    static func parse(_ json: [String: Any]?) -> FrictionFace? {
+        guard let json else { return nil }
+        return FrictionFace(
+            inferred: json["inferred"] as? String,
+            felt: json["felt"] as? String,
+            collision: json["collision"] as? Bool ?? false
+        )
+    }
+}
+
+/// Alignment drift over recent votes — the payoff that makes voting matter.
+struct CompassDrift {
+    let total: Int
+    let toward: Int
+    let away: Int
+    let streak: Int
+    let streakDirection: String
+    let marks: [String]      // chronological, oldest -> newest
+    let summary: String
+
+    static func parse(_ json: [String: Any]?) -> CompassDrift? {
+        guard let json else { return nil }
+        let total = json["total"] as? Int ?? 0
+        if total <= 0 { return nil }
+        return CompassDrift(
+            total: total,
+            toward: json["toward"] as? Int ?? 0,
+            away: json["away"] as? Int ?? 0,
+            streak: json["streak"] as? Int ?? 0,
+            streakDirection: json["streak_direction"] as? String ?? "toward",
+            marks: (json["marks"] as? [String]) ?? [],
+            summary: json["summary"] as? String ?? ""
+        )
+    }
+}
+
+/// The convergence readout — are lived weeks closing on the compass over time?
+struct Convergence {
+    let weeksTracked: Int
+    let toward: Int
+    let away: Int
+    let streak: Int
+    let direction: String   // closing | widening | holding
+    let summary: String
+
+    static func parse(_ json: [String: Any]?) -> Convergence? {
+        guard let json else { return nil }
+        let summary = json["summary"] as? String ?? ""
+        if summary.isEmpty { return nil }
+        return Convergence(
+            weeksTracked: json["weeks_tracked"] as? Int ?? 0,
+            toward: json["toward"] as? Int ?? 0,
+            away: json["away"] as? Int ?? 0,
+            streak: json["streak"] as? Int ?? 0,
+            direction: json["direction"] as? String ?? "holding",
+            summary: summary
+        )
+    }
+}
+
+struct FacetConvergence: Identifiable {
+    let facet: String
+    let summary: String
+    let streakDir: String   // toward | away | nil
+    let direction: String   // closing | widening | holding
+    var id: String { facet }
+
+    var isAway: Bool { streakDir == "away" || direction == "widening" }
+
+    static func parseList(_ arr: [[String: Any]]?) -> [FacetConvergence] {
+        guard let arr else { return [] }
+        return arr.compactMap { j in
+            let summary = j["summary"] as? String ?? ""
+            guard !summary.isEmpty else { return nil }
+            return FacetConvergence(
+                facet: j["facet"] as? String ?? "",
+                summary: summary,
+                streakDir: j["streak_dir"] as? String ?? "",
+                direction: j["direction"] as? String ?? "holding"
+            )
+        }
+    }
+}
+
 struct ThreadMoment: Identifiable {
     let id: String
     let kind: String
@@ -9,23 +98,48 @@ struct ThreadMoment: Identifiable {
     let heading: String
     let body: String
     let threadType: String
+    let cardRole: String
+    let votePrompt: String
+    let advanceHint: String
+    let userVote: String?
+    let voteFeedback: String?
+    let alignment: String?
+    let frictionFace: FrictionFace?
+    let compassDrift: CompassDrift?
+    let convergence: Convergence?
+    let facetConvergence: [FacetConvergence]
+    let readPrompt: String?
+    let readChecked: Bool
+    let readVerdict: String?     // confirm | correct | nil
+    let readFeedback: String?
+    let readSharpness: String?
+    let compassHint: String?
+    let commitPrompt: String?
+    let commitmentText: String?
+    let commitmentRecall: String?
     let sheet: MomentSheet
 
     var label: String {
-        if kind == "weave" { return chip.isEmpty ? "this week" : chip }
+        if kind == "anchor" || cardRole == "compass" { return "compass" }
+        if kind == "weave" || cardRole == "week" { return "this week" }
         if kind == "caught_up" { return "caught up" }
         return chip.isEmpty ? (heading.isEmpty ? "moment" : heading) : chip
     }
 
-    var canReply: Bool { kind != "weave" && kind != "caught_up" }
+    /// v1: week card only — relationship mirror deferred.
+    var canVote: Bool { kind == "weave" }
+
+    var canReply: Bool { kind == "anchor" }
 
     static func parseList(_ raw: [[String: Any]]) -> [ThreadMoment] {
         raw.compactMap { parse($0) }
+            .filter { $0.kind == "anchor" || $0.kind == "weave" }
     }
 
     static func parse(_ json: [String: Any]) -> ThreadMoment? {
         guard let id = json["id"] as? String else { return nil }
         let sheetJson = json["sheet"] as? [String: Any] ?? [:]
+        let meta = sheetJson["meta"] as? [String: Any] ?? [:]
         return ThreadMoment(
             id: id,
             kind: json["kind"] as? String ?? "moment",
@@ -33,6 +147,25 @@ struct ThreadMoment: Identifiable {
             heading: json["heading"] as? String ?? "",
             body: json["body"] as? String ?? "",
             threadType: json["thread_type"] as? String ?? "",
+            cardRole: json["card_role"] as? String ?? "",
+            votePrompt: json["vote_prompt"] as? String ?? "",
+            advanceHint: json["advance_hint"] as? String ?? "",
+            userVote: json["user_vote"] as? String,
+            voteFeedback: json["vote_feedback"] as? String,
+            alignment: meta["alignment"] as? String,
+            frictionFace: FrictionFace.parse(json["friction_face"] as? [String: Any]),
+            compassDrift: CompassDrift.parse(json["compass_drift"] as? [String: Any]),
+            convergence: Convergence.parse(json["convergence"] as? [String: Any]),
+            facetConvergence: FacetConvergence.parseList(json["facet_convergence"] as? [[String: Any]]),
+            readPrompt: json["read_prompt"] as? String,
+            readChecked: json["read_checked"] as? Bool ?? false,
+            readVerdict: (json["read_check"] as? [String: Any])?["verdict"] as? String,
+            readFeedback: json["read_feedback"] as? String,
+            readSharpness: json["read_sharpness"] as? String,
+            compassHint: json["compass_hint"] as? String,
+            commitPrompt: json["commit_prompt"] as? String,
+            commitmentText: (json["commitment"] as? [String: Any])?["text"] as? String,
+            commitmentRecall: json["commitment_recall"] as? String,
             sheet: MomentSheet.parse(sheetJson)
         )
     }
@@ -41,6 +174,8 @@ struct ThreadMoment: Identifiable {
 struct MomentReceipt: Identifiable {
     let id = UUID()
     let label: String
+    let proofType: String
+    let proofStrength: String
     let supports: String
     let text: String
 }
@@ -61,6 +196,8 @@ struct MomentSheet {
             let parts = [kindLabel, r["when"] as? String, r["from"] as? String].compactMap { $0 }.filter { !$0.isEmpty }
             return MomentReceipt(
                 label: parts.joined(separator: " · "),
+                proofType: r["proof_type"] as? String ?? "",
+                proofStrength: r["proof_strength"] as? String ?? "",
                 supports: r["supports"] as? String ?? "",
                 text: r["text"] as? String ?? ""
             )
@@ -157,7 +294,7 @@ enum CosmosAPIClient {
             query["refresh"] = "1"
             query["t"] = String(Int(Date().timeIntervalSince1970 * 1000))
         }
-        request(path: "/api/me/moments", query: query, timeout: refresh ? 90 : 30) { result in
+        request(path: "/api/me/moments", query: query, timeout: refresh ? 120 : 45) { result in
             switch result {
             case .success(let json):
                 if json["schema_ready"] as? Bool == false {
@@ -168,6 +305,63 @@ enum CosmosAPIClient {
                 let recompiled = json["recompiled"] as? Bool ?? false
                 let compiling = json["compiling"] as? Bool ?? false
                 completion(.success((ThreadMoment.parseList(rows), recompiled, compiling)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func vote(momentId: String, felt: String, completion: @escaping (Result<[ThreadMoment], APIError>) -> Void) {
+        let encoded = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        request(path: "/api/me/moments/\(encoded)/vote", method: "POST", body: ["felt": felt]) { result in
+            switch result {
+            case .success(let json):
+                let rows = json["moments"] as? [[String: Any]] ?? []
+                completion(.success(ThreadMoment.parseList(rows)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func readCheck(momentId: String, verdict: String, correction: String? = nil, completion: @escaping (Result<[ThreadMoment], APIError>) -> Void) {
+        let encoded = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        var payload: [String: Any] = ["verdict": verdict]
+        if let correction = correction, !correction.isEmpty { payload["correction"] = correction }
+        request(path: "/api/me/moments/\(encoded)/read", method: "POST", body: payload) { result in
+            switch result {
+            case .success(let json):
+                let rows = json["moments"] as? [[String: Any]] ?? []
+                completion(.success(ThreadMoment.parseList(rows)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func commit(momentId: String, text: String, completion: @escaping (Result<[ThreadMoment], APIError>) -> Void) {
+        let encoded = momentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? momentId
+        request(path: "/api/me/moments/\(encoded)/commit", method: "POST", body: ["text": text]) { result in
+            switch result {
+            case .success(let json):
+                let rows = json["moments"] as? [[String: Any]] ?? []
+                completion(.success(ThreadMoment.parseList(rows)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func proposeCompass(completion: @escaping (Result<String, APIError>) -> Void) {
+        request(path: "/api/me/anchor/propose", method: "POST", body: [:], timeout: 60) { result in
+            switch result {
+            case .success(let json):
+                let proposal = (json["proposal"] as? String) ?? ""
+                if proposal.isEmpty {
+                    completion(.failure(APIError(message: "not_enough_signal")))
+                } else {
+                    completion(.success(proposal))
+                }
             case .failure(let err):
                 completion(.failure(err))
             }
