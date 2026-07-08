@@ -945,6 +945,9 @@ struct NativeThreadView: View {
         default:
             return nil
         }
+        if receipt.claimSupport.lowercased() == "strong" {
+            return typeLabel
+        }
         if strength == "adjacent" {
             return "\(typeLabel) · adjacent, weak"
         }
