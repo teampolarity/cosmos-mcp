@@ -367,17 +367,17 @@ struct NativeThreadView: View {
     /// Pull a short supporting line from direct proof on the card, if any.
     private func leadReceiptText(_ moment: ThreadMoment) -> String? {
         let direct = moment.sheet.receipts.first {
-            $0.proofStrength?.lowercased() == "direct"
-                && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            $0.proofStrength.lowercased() == "direct"
+                && !$0.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty
         }
         guard let first = direct else { return nil }
-        let s = first.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let s = first.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         if s.count <= 140 { return s }
         return String(s.prefix(139)) + "…"
     }
 
     private func leadProofHeading(_ receipt: MomentReceipt) -> String {
-        receipt.proofStrength?.lowercased() == "direct" ? "Best proof" : "Closest signal"
+        receipt.proofStrength.lowercased() == "direct" ? "Best proof" : "Closest signal"
     }
 
     /// Render the week read into a branded identity artifact and open the macOS share sheet.
@@ -826,7 +826,7 @@ struct NativeThreadView: View {
                             Text(leadProofHeading(lead))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(CosmosTheme.text)
-                            receiptBlock(lead, isLead: lead.proofStrength?.lowercased() == "direct")
+                            receiptBlock(lead, isLead: lead.proofStrength.lowercased() == "direct")
                         }
 
                         let extra = Array(moment.sheet.receipts.dropFirst())
