@@ -21,6 +21,7 @@ enum CosmosWebStore {
         return config
     }
 
+    /// Signed-in home (Today). Same surface as the browser, with app chrome hints.
     static func threadURL(connect: Bool = false) -> URL {
         var parts = ["app=1"]
         if connect { parts.append("connect=1") }

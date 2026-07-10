@@ -227,6 +227,86 @@ struct ThreadOnboardingStatus {
     let total: Int
 }
 
+struct TodayItem: Identifiable {
+    let id: String
+    let label: String
+    let why: String
+    let source: String
+    let sourceLabel: String
+    let role: String
+
+    var isFrog: Bool { role == "frog" }
+
+    static func parse(_ json: [String: Any]) -> TodayItem? {
+        guard let label = json["label"] as? String, !label.isEmpty else { return nil }
+        let id = json["id"] as? String ?? label
+        return TodayItem(
+            id: id,
+            label: label,
+            why: json["why"] as? String ?? json["source_label"] as? String ?? "",
+            source: json["source"] as? String ?? "",
+            sourceLabel: json["source_label"] as? String ?? "",
+            role: json["role"] as? String ?? "support"
+        )
+    }
+}
+
+struct TodayPayload {
+    let declared: String?
+    let frog: TodayItem?
+    let supports: [TodayItem]
+    let readCount: Int
+    let surfaced: Int
+    let suppressed: Int
+    let morningText: Bool
+    let intentOnly: Bool
+    let sparse: Bool
+    let done: Bool
+
+    var headline: String {
+        if frog != nil { return "one thing needs you." }
+        if surfaced > 0 { return "a few things need you." }
+        return "nothing needs you right now."
+    }
+
+    var summary: String? {
+        if suppressed > 0 { return "\(suppressed) can wait." }
+        if intentOnly { return "cosmos will read quietly as you connect sources." }
+        if readCount > surfaced, surfaced > 0 {
+            return "\(readCount - surfaced) more can wait."
+        }
+        return nil
+    }
+
+    var statsLine: String {
+        if readCount > surfaced {
+            return "\(readCount) read, \(surfaced) surfaced."
+        }
+        if suppressed > 0 { return "\(surfaced) surfaced today." }
+        if intentOnly { return "cosmos will read quietly as you connect sources." }
+        return ""
+    }
+
+    static func parse(_ json: [String: Any]) -> TodayPayload {
+        let stats = json["stats"] as? [String: Any] ?? [:]
+        let prefs = json["prefs"] as? [String: Any] ?? [:]
+        let frogJson = json["frog"] as? [String: Any]
+        let supportRows = json["supports"] as? [[String: Any]] ?? []
+        return TodayPayload(
+            declared: json["declared"] as? String,
+            frog: frogJson.flatMap(TodayItem.parse),
+            supports: supportRows.compactMap(TodayItem.parse),
+            readCount: stats["read_count"] as? Int ?? 0,
+            surfaced: stats["surfaced"] as? Int ?? 0,
+            suppressed: stats["suppressed"] as? Int ?? 0,
+            morningText: prefs["morning_text"] as? Bool ?? false,
+            intentOnly: json["intent_only"] as? Bool ?? false,
+            sparse: json["sparse"] as? Bool ?? false,
+            done: json["done"] as? Bool ?? false
+        )
+    }
+}
+
 enum CosmosAPIClient {
     static let baseURL = URL(string: "https://cosmos.polarity-lab.com")!
 
@@ -412,6 +492,56 @@ enum CosmosAPIClient {
                     progress: json["progress"] as? Int ?? 0,
                     total: json["total"] as? Int ?? 0
                 )))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func fetchToday(completion: @escaping (Result<TodayPayload, APIError>) -> Void) {
+        request(path: "/api/me/today") { result in
+            switch result {
+            case .success(let json):
+                completion(.success(TodayPayload.parse(json)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func submitTodayFeedback(
+        item: TodayItem,
+        action: String,
+        completion: @escaping (Result<TodayPayload, APIError>) -> Void
+    ) {
+        request(path: "/api/me/today", method: "POST", body: [
+            "item_id": item.id,
+            "action": action,
+            "label": item.label,
+            "source": item.source,
+        ]) { result in
+            switch result {
+            case .success(let json):
+                let todayJson = json["today"] as? [String: Any] ?? json
+                completion(.success(TodayPayload.parse(todayJson)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func setTodayMorningPref(
+        enabled: Bool,
+        completion: @escaping (Result<TodayPayload, APIError>) -> Void
+    ) {
+        request(path: "/api/me/today", method: "POST", body: [
+            "action": "set_morning",
+            "morning_text": enabled,
+        ]) { result in
+            switch result {
+            case .success(let json):
+                let todayJson = json["today"] as? [String: Any] ?? json
+                completion(.success(TodayPayload.parse(todayJson)))
             case .failure(let err):
                 completion(.failure(err))
             }

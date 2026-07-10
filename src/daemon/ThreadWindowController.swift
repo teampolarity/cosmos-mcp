@@ -1,10 +1,10 @@
-// Native Thread window — SwiftUI deck replaces WKWebView shell.
+// Native Today window — same product as the browser, native SwiftUI.
 
 import AppKit
 import SwiftUI
 
 final class ThreadWindowController: NSWindowController {
-    private var hosting: NSHostingController<NativeThreadView>!
+    private var hosting: NSHostingController<NativeTodayView>!
 
     init(menuApp: CosmosMenuApp) {
         let window = NSWindow(
@@ -19,7 +19,7 @@ final class ThreadWindowController: NSWindowController {
         window.backgroundColor = .black
         super.init(window: window)
 
-        let view = NativeThreadView(onOpenSettings: { [weak menuApp] in
+        let view = NativeTodayView(onOpenSettings: { [weak menuApp] in
             menuApp?.openPreferences()
         })
         hosting = NSHostingController(rootView: view)

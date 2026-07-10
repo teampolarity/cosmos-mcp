@@ -33,7 +33,7 @@ struct ConnectSheetView: View {
                         .foregroundColor(CosmosTheme.textMuted)
                 }
 
-                Text("Thread needs sign-in + iMessage sync. MCP key is only for Cursor. Tap Open in Cosmos from Connectors to save the key.")
+                Text("Today needs sign-in + iMessage sync. MCP key is only for Cursor. Tap Open in Cosmos from Connectors to save the key.")
                     .font(.system(size: 11))
                     .foregroundColor(CosmosTheme.textFaint)
 
@@ -50,7 +50,7 @@ struct ConnectSheetView: View {
                         .foregroundColor(CosmosTheme.textMuted)
                 }
                 if momentCount > 0 {
-                    Text("\(momentCount) cards ready in Thread")
+                    Text("\(momentCount) items ready in Today")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(CosmosTheme.accent)
                 }
@@ -67,7 +67,7 @@ struct ConnectSheetView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     if momentCount > 0 {
-                        actionButton("Load Thread", primary: true) {
+                        actionButton("Refresh Today", primary: true) {
                             onLoadThread()
                             onClose()
                         }
@@ -175,8 +175,10 @@ struct ConnectSheetView: View {
         CosmosAPIClient.fetchSyncStatus { result in
             if case .success(let hint) = result { syncHint = hint }
         }
-        CosmosAPIClient.fetchMoments(refresh: false) { result in
-            if case .success(let (list, _, _)) = result { momentCount = list.count }
+        CosmosAPIClient.fetchToday { result in
+            if case .success(let payload) = result {
+                momentCount = (payload.frog != nil ? 1 : 0) + payload.supports.count
+            }
         }
     }
 
