@@ -45,4 +45,4 @@ The release workflow needs these repository secrets.
 - `NOTARY_KEY_ID`, set to `CHA2KDX6C4`
 - `NOTARY_ISSUER_ID`
 
-The workflow uploads `dist/Cosmos.app`, which is the path produced by the build script.
+The workflow uploads `dist/Cosmos.zip`, the notarized archive produced by the build script. Uploading the `.app` directory directly would flatten executable permissions inside the bundle.

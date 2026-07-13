@@ -112,11 +112,11 @@ grep -Fq 'run: npm run test:signing' "$WORKFLOW" \
   || fail "release workflow does not run the signing regression suite"
 pass "runs signing regressions from package scripts and the release workflow"
 
-grep -Fq 'path: dist/Cosmos.app' "$WORKFLOW" \
-  || fail "workflow does not upload dist/Cosmos.app"
-if grep -Fq 'path: dist/CosmosSync.app' "$WORKFLOW"; then
-  fail "workflow still uploads the retired CosmosSync.app path"
+grep -Fq 'path: dist/Cosmos.zip' "$WORKFLOW" \
+  || fail "workflow does not upload the notarized Cosmos.zip archive"
+if grep -Eq 'path: dist/Cosmos(Sync)?\.app' "$WORKFLOW"; then
+  fail "workflow uploads an app directory and will lose executable permissions"
 fi
-pass "uploads the app path produced by the release build"
+pass "uploads the notarized archive without flattening app permissions"
 
 printf '1..%d\n' "$tests"
