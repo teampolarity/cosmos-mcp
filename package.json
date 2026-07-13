@@ -20,6 +20,7 @@
     "dev": "tsc --watch",
     "start": "node dist/server.js",
     "test": "vitest run",
+    "test:signing": "bash tests/signing-scripts.test.sh",
     "test:watch": "vitest",
     "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
     "prepublishOnly": "npm run build",
