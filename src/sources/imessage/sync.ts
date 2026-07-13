@@ -16,6 +16,9 @@ const CHUNK_SIZE = 2000;
 // trip latency overlap. 4 is conservative; raise if you have more.
 const DEFAULT_CONCURRENCY = 4;
 
+const MAX_D1_RETRIES = 3;
+const DEFAULT_RETRY_AFTER_SEC = 60;
+
 export interface SyncOptions {
   turns: AsyncGenerator<CanonicalTurn[]>;
   state: ImessageState;
@@ -24,6 +27,8 @@ export interface SyncOptions {
   fetch?: typeof globalThis.fetch;
   verbose?: boolean;
   concurrency?: number;
+  /** Test hook — replace sleep during 503 retries. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface SyncResult {
@@ -35,8 +40,29 @@ export interface SyncResult {
   text_backfilled?: number;
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterSec(status: number, detail: string): number | null {
+  if (status !== 503 && status !== 429) return null;
+  try {
+    const parsed = JSON.parse(detail) as { retry_after_sec?: number; error?: string };
+    if (Number.isFinite(parsed.retry_after_sec) && Number(parsed.retry_after_sec) > 0) {
+      return Number(parsed.retry_after_sec);
+    }
+    if (String(parsed.error || "").includes("d1_overloaded")) {
+      return DEFAULT_RETRY_AFTER_SEC;
+    }
+  } catch {
+    if (/d1_overloaded|database busy/i.test(detail)) return DEFAULT_RETRY_AFTER_SEC;
+  }
+  return status === 503 || status === 429 ? DEFAULT_RETRY_AFTER_SEC : null;
+}
+
 export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
   const f = opts.fetch ?? globalThis.fetch;
+  const sleep = opts.sleep ?? sleepMs;
   const concurrency = Math.max(1, opts.concurrency ?? DEFAULT_CONCURRENCY);
   const totals: SyncResult = {
     persons_upserted: 0, threads_upserted: 0, turns_seen: 0, turns_skipped: 0, observations_created: 0,
@@ -62,6 +88,39 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
   // stay ordered), then grabs the next thread. Threads themselves run
   // in parallel up to `concurrency`.
   const queue: Array<[string, CanonicalTurn[]]> = [...byThread.entries()];
+
+  async function postChunk(
+    threadId: string,
+    body: Record<string, unknown>,
+  ): Promise<SyncResult> {
+    let attempt = 0;
+    while (true) {
+      const res = await f(`${opts.apiBase}/api/me/connectors/conversations/turns`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-MCP-Key": opts.token,
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        return await res.json() as SyncResult;
+      }
+      const detail = await res.text();
+      const retryAfter = parseRetryAfterSec(res.status, detail);
+      if (retryAfter != null && attempt < MAX_D1_RETRIES) {
+        attempt += 1;
+        if (opts.verbose) {
+          process.stderr.write(
+            `[sync]   ${threadId}: ${res.status} busy, retry ${attempt}/${MAX_D1_RETRIES} in ${retryAfter}s\n`,
+          );
+        }
+        await sleep(retryAfter * 1000);
+        continue;
+      }
+      throw new Error(`cosmos rejected sync for thread ${threadId}: ${res.status} ${detail}`);
+    }
+  }
 
   async function postOneThread(threadId: string, turns: CanonicalTurn[]): Promise<void> {
     if (opts.verbose) {
@@ -99,26 +158,14 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
         ...(t.links && t.links.length ? { links: t.links } : {}),
         ...(t.attachments && t.attachments.length ? { attachments: t.attachments } : {}),
       }));
-      const res = await f(`${opts.apiBase}/api/me/connectors/conversations/turns`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-MCP-Key": opts.token,
-        },
-        body: JSON.stringify({
-          source: "imessage",
-          thread_id: threadId,
-          participants,
-          participant_count: participantCount,
-          turns: slice,
-          extract: "content",
-        }),
+      const data = await postChunk(threadId, {
+        source: "imessage",
+        thread_id: threadId,
+        participants,
+        participant_count: participantCount,
+        turns: slice,
+        extract: "content",
       });
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`cosmos rejected sync for thread ${threadId}: ${res.status} ${detail}`);
-      }
-      const data = await res.json() as SyncResult;
       if (opts.verbose) {
         const backfill = data.text_backfilled ?? 0;
         process.stderr.write(

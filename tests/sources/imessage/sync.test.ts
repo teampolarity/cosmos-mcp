@@ -37,4 +37,34 @@ describe("syncImessage", () => {
     expect(result.persons_upserted).toBe(2);
     expect(result.threads_upserted).toBe(2);
   });
+
+  it("retries d1_overloaded 503 using retry_after_sec then succeeds", async () => {
+    const turns = [
+      { turn_id: "imessage:m1", thread_id: "T1", from_handle: "self", occurred_at: "2026-05-17T08:00:00Z", participants: ["self", "+16138646086"] },
+    ];
+    let hits = 0;
+    const sleeps: number[] = [];
+    const result = await syncImessage({
+      turns: (async function* () { yield turns; })(),
+      state: defaultState(),
+      apiBase: "https://cosmos.test",
+      token: "tok",
+      sleep: async (ms) => { sleeps.push(ms); },
+      fetch: async () => {
+        hits += 1;
+        if (hits === 1) {
+          return new Response(JSON.stringify({
+            error: "d1_overloaded: database busy — retry this thread in a minute",
+            retry_after_sec: 60,
+          }), { status: 503 });
+        }
+        return new Response(JSON.stringify({
+          persons_upserted: 1, threads_upserted: 1, turns_seen: 1, turns_skipped: 0, observations_created: 0,
+        }), { status: 200 });
+      },
+    });
+    expect(hits).toBe(2);
+    expect(sleeps).toEqual([60000]);
+    expect(result.turns_seen).toBe(1);
+  });
 });
