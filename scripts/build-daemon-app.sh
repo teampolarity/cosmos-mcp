@@ -151,4 +151,9 @@ xcrun stapler staple "$OUT_DIR"
 xcrun stapler validate "$OUT_DIR"
 spctl --assess --type execute --verbose=4 "$OUT_DIR"
 
+# The archive submitted above predates the stapled ticket. Rebuild the
+# distribution artifact from the stapled bundle so it survives transport.
+rm -f "$ZIP_PATH"
+ditto -c -k --keepParent "$OUT_DIR" "$ZIP_PATH"
+
 echo "✓ dist/Cosmos.app built, signed, notarized, stapled."

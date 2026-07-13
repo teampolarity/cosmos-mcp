@@ -99,6 +99,13 @@ if [[ -z "$stapler_line" || -z "$gatekeeper_line" || "$gatekeeper_line" -le "$st
 fi
 pass "enforces Gatekeeper assessment on the notarized app"
 
+staple_line="$(grep -n 'xcrun stapler staple' "$BUILD_SCRIPT" | tail -1 | cut -d: -f1)"
+final_archive_line="$(grep -n 'ditto -c -k --keepParent' "$BUILD_SCRIPT" | tail -1 | cut -d: -f1)"
+if [[ -z "$staple_line" || -z "$final_archive_line" || "$final_archive_line" -le "$staple_line" ]]; then
+  fail "build script does not package the app again after stapling"
+fi
+pass "packages the stapled app for distribution"
+
 if grep -Fq 'DEV_SIGN="${SIGN_IDENTITY:-}"' "$DEV_BUILD_SCRIPT"; then
   fail "development build bypasses the org identity resolver"
 fi

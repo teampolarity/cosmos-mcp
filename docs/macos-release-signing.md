@@ -21,7 +21,7 @@ export POLARITY_TEAM_ID="<polarity-apple-team-id>"
 bash scripts/build-daemon-app.sh
 ```
 
-The script builds `dist/Cosmos.app`, signs both executables and the bundle with the hardened runtime and timestamp, submits `dist/Cosmos.zip` to Apple, then staples and validates the notarization ticket.
+The script builds `dist/Cosmos.app`, signs both executables and the bundle with the hardened runtime and timestamp, submits `dist/Cosmos.zip` to Apple, staples and validates the notarization ticket, then rebuilds the zip from the stapled app for distribution.
 
 Do not replace the installed `~/Applications/Cosmos Sync.app` until this build completes. Verify the finished artifact before installation.
 
