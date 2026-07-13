@@ -10,11 +10,10 @@ import { ImessageState } from "./state.js";
 // trips on the first sync of a heavy account.
 const CHUNK_SIZE = 2000;
 
-// Process N threads in parallel. Each thread is independent on the
-// server (different thread_node_id), and D1 batch() serializes the
-// writes internally, so concurrent posts mostly buys us the HTTP round-
-// trip latency overlap. 4 is conservative; raise if you have more.
-const DEFAULT_CONCURRENCY = 4;
+// Conversation ingest performs several D1 writes per request. Keep the
+// default serial so a large iMessage backfill does not queue multiple
+// 2,000-turn batches against the same database at once.
+const DEFAULT_CONCURRENCY = 1;
 
 const MAX_D1_RETRIES = 3;
 const DEFAULT_RETRY_AFTER_SEC = 60;
@@ -123,6 +122,15 @@ export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
   }
 
   async function postOneThread(threadId: string, turns: CanonicalTurn[]): Promise<void> {
+    const checkpoint = opts.state.threads[threadId]?.last_turn_id_synced;
+    if (checkpoint) {
+      const checkpointIndex = turns.findIndex((turn) => turn.turn_id === checkpoint);
+      if (checkpointIndex === turns.length - 1) return;
+      if (checkpointIndex >= 0) turns = turns.slice(checkpointIndex + 1);
+    }
+
+    if (turns.length === 0) return;
+
     if (opts.verbose) {
       process.stderr.write(`[sync] thread ${threadId} · ${turns.length} turns\n`);
     }
