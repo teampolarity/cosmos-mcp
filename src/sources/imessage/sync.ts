@@ -44,7 +44,7 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseRetryAfterSec(status: number, detail: string): number | null {
+export function parseRetryAfterSec(status: number, detail: string): number | null {
   if (status !== 503 && status !== 429) return null;
   try {
     const parsed = JSON.parse(detail) as { retry_after_sec?: number; error?: string };
@@ -57,7 +57,7 @@ function parseRetryAfterSec(status: number, detail: string): number | null {
   } catch {
     if (/d1_overloaded|database busy/i.test(detail)) return DEFAULT_RETRY_AFTER_SEC;
   }
-  return status === 503 || status === 429 ? DEFAULT_RETRY_AFTER_SEC : null;
+  return DEFAULT_RETRY_AFTER_SEC;
 }
 
 export async function syncImessage(opts: SyncOptions): Promise<SyncResult> {
