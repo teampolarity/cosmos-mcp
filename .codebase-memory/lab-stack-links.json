@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "repo": "cosmos-mcp",
+  "slug": "cosmos-mcp",
+  "outbound": [
+    {
+      "to": "cosmos",
+      "kind": "http_api",
+      "method": "POST",
+      "path": "/api/mcp",
+      "url": "https://cosmos.polarity-lab.com/api/mcp"
+    },
+    {
+      "to": "cosmos",
+      "kind": "http_api",
+      "method": "POST",
+      "path": "/api/capture",
+      "url": "https://cosmos.polarity-lab.com/api/capture"
+    },
+    {
+      "to": "cosmos",
+      "kind": "http_api",
+      "method": "POST",
+      "path": "/api/chat",
+      "url": "https://cosmos.polarity-lab.com/api/chat"
+    },
+    {
+      "to": "cosmos",
+      "kind": "http_api",
+      "method": "POST",
+      "path": "/api/polarity/capture-turn",
+      "url": "https://cosmos.polarity-lab.com/api/polarity/capture-turn"
+    }
+  ],
+  "cosmos_graph": {
+    "mcp_tool": "cosmos_schema",
+    "api": "GET /api/me/lab-stack",
+    "note": "Runtime stack edges live in Cosmos D1 (calls_api / integrates_with), not CBM CROSS_* until linker supports fetch/httpx."
+  }
+}
