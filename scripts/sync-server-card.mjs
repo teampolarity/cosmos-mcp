@@ -6,6 +6,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workerPath = path.join(__dirname, '../worker/src/index.ts');
+const packageVersion = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version;
 
 const tools = TOOLS.map((t) => {
   const schema = zodToJsonSchema(t.inputSchema, { target: 'openApi3', $refStrategy: 'none' });
@@ -14,17 +15,23 @@ const tools = TOOLS.map((t) => {
 });
 
 const cardObj = {
-  serverInfo: { name: 'cosmos-mcp', version: '${PACKAGE_VERSION}' },
+  serverInfo: { name: 'cosmos-mcp', version: packageVersion },
   tools,
   resources: [],
   prompts: [],
 };
 
-const cardJson = JSON.stringify(cardObj);
+// Emit a JavaScript string literal, not a template literal. Tool
+// descriptions may contain backticks, `${...}`, and quoted examples.
+const cardLiteral = JSON.stringify(JSON.stringify(cardObj));
 const workerSrc = fs.readFileSync(workerPath, 'utf8');
-const next = workerSrc.replace(
-  /const SERVER_CARD = `[\s\S]*?`;/,
-  `const SERVER_CARD = \`${cardJson}\`;`,
+const withVersion = workerSrc.replace(
+  /const PACKAGE_VERSION = "[^"]+";/,
+  `const PACKAGE_VERSION = "${packageVersion}";`,
+);
+const next = withVersion.replace(
+  /const SERVER_CARD = (?:`[\s\S]*?`|"(?:[^"\\]|\\.)*");/,
+  `const SERVER_CARD = ${cardLiteral};`,
 );
 fs.writeFileSync(workerPath, next);
 console.log(`updated ${workerPath} (${tools.length} tools)`);
