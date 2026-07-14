@@ -1,5 +1,7 @@
 # Handoff — Sign + ship cosmos-mcp daemon as a notarized .app bundle
 
+> Historical handoff from May 2026. The app, install paths, and Apple account state have changed since this was written. Use [`docs/macos-release-signing.md`](./macos-release-signing.md) and the current scripts for release signing.
+
 Self-contained brief. Date: 2026-05-19. A fresh agent or future-you can execute this without back-context.
 
 ## Current status (2026-05-19 evening)

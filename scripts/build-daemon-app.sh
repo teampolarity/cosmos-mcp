@@ -1,13 +1,31 @@
 #!/usr/bin/env bash
-# Build, sign, notarize, and staple Cosmos Sync.app into dist/CosmosSync.app.
+# Build, sign, notarize, and staple Cosmos.app into dist/Cosmos.app.
 # Requires: a Developer ID Application cert in login.keychain and an App Store
-# Connect API .p8 key. See docs/handoff_2026-05-19_daemon_app_bundle.md.
+# Connect API .p8 key. See docs/macos-release-signing.md.
 set -euo pipefail
 
-SIGN_IDENTITY="${SIGN_IDENTITY:-$(bash "$(dirname "$0")/resolve-sign-identity.sh")}"
-NOTARY_KEY_PATH="${NOTARY_KEY_PATH:-$HOME/projects/blueno-ios/.secrets/AuthKey_8F38V68Y2K.p8}"
-NOTARY_KEY_ID="${NOTARY_KEY_ID:-8F38V68Y2K}"
-NOTARY_ISSUER_ID="${NOTARY_ISSUER_ID:-9e78df19-ca2e-444f-8726-3749a32e55db}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SIGN_IDENTITY="$(bash "$SCRIPT_DIR/resolve-sign-identity.sh")"
+NOTARY_KEY_PATH="${NOTARY_KEY_PATH:-/Users/shadrack/projects/cosmos/.secrets/apple/AuthKey_CHA2KDX6C4.p8}"
+NOTARY_KEY_ID="${NOTARY_KEY_ID:-CHA2KDX6C4}"
+
+if [[ -z "${NOTARY_ISSUER_ID:-}" ]]; then
+  echo "build-daemon-app: NOTARY_ISSUER_ID is required for notarization" >&2
+  echo "  copy the Issuer ID from App Store Connect → Users and Access → Integrations" >&2
+  exit 1
+fi
+if [[ ! "$NOTARY_ISSUER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  echo "build-daemon-app: NOTARY_ISSUER_ID must be a UUID" >&2
+  exit 1
+fi
+if [[ ! "$NOTARY_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+  echo "build-daemon-app: NOTARY_KEY_ID must be a 10-character App Store Connect key id" >&2
+  exit 1
+fi
+if [[ ! -r "$NOTARY_KEY_PATH" ]]; then
+  echo "build-daemon-app: notary key is not readable at $NOTARY_KEY_PATH" >&2
+  exit 1
+fi
 
 APP_NAME="Cosmos"
 BUNDLE_ID="com.polaritylab.cosmos-mcp-daemon"
@@ -107,6 +125,16 @@ codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" \
   "$OUT_DIR"
 
 codesign --verify --deep --strict --verbose=2 "$OUT_DIR"
+if [[ -n "${POLARITY_TEAM_ID:-}" ]]; then
+  signed_team="$(codesign -dv --verbose=4 "$OUT_DIR" 2>&1 \
+    | awk -F= '$1 == "TeamIdentifier" && !found { print $2; found = 1 }')"
+  if [[ "$signed_team" != "$POLARITY_TEAM_ID" ]]; then
+    echo "build-daemon-app: signed app TeamIdentifier does not match POLARITY_TEAM_ID" >&2
+    echo "  signed team: ${signed_team:-missing}" >&2
+    echo "  expected team: $POLARITY_TEAM_ID" >&2
+    exit 1
+  fi
+fi
 spctl --assess --type execute --verbose=4 "$OUT_DIR" || true
 
 ZIP_PATH="dist/Cosmos.zip"
@@ -121,5 +149,11 @@ xcrun notarytool submit "$ZIP_PATH" \
 
 xcrun stapler staple "$OUT_DIR"
 xcrun stapler validate "$OUT_DIR"
+spctl --assess --type execute --verbose=4 "$OUT_DIR"
+
+# The archive submitted above predates the stapled ticket. Rebuild the
+# distribution artifact from the stapled bundle so it survives transport.
+rm -f "$ZIP_PATH"
+ditto -c -k --keepParent "$OUT_DIR" "$ZIP_PATH"
 
 echo "✓ dist/Cosmos.app built, signed, notarized, stapled."

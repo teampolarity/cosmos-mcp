@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { intervalSeconds, loadSyncConfig, saveSyncConfig, } from "./config.js";
 import { DAEMON_LABEL, daemonPaths, packagedAppPath, resolveNpxPath } from "./paths.js";
-function buildRunner(npxPath, config) {
+export function buildRunner(npxPath, config) {
     const mins = Math.round(intervalSeconds(config.interval_hours) / 60);
     const blocks = [
         "#!/bin/bash",
@@ -37,8 +37,9 @@ function buildRunner(npxPath, config) {
     }
     blocks.push('echo "[$(ts)] daemon tick done"', "");
     if (statusVars.length) {
-        const jsonBody = statusVars.map((v) => `"${v.json}":$${v.shell}`).join(",");
-        blocks.push(`/bin/mkdir -p "$HOME/.cosmos"`, `FINISHED_AT="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"`, `/usr/bin/printf '{"finished_at":"%s",${jsonBody}}\\n' "$FINISHED_AT" > "$HOME/.cosmos/daemon-status.json"`, "");
+        const jsonFormat = statusVars.map((v) => `"${v.json}":%s`).join(",");
+        const jsonValues = statusVars.map((v) => `"$${v.shell}"`).join(" ");
+        blocks.push(`/bin/mkdir -p "$HOME/.cosmos"`, `FINISHED_AT="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"`, `/usr/bin/printf '{"finished_at":"%s",${jsonFormat}}\\n' "$FINISHED_AT" ${jsonValues} > "$HOME/.cosmos/daemon-status.json"`, "");
     }
     return blocks.join("\n");
 }
@@ -185,10 +186,16 @@ export function kickDaemon() {
     }
     return { ok: true };
 }
-export function applyDaemonConfig(packageRoot, config) {
+export function applyDaemonConfig(
+    packageRoot,
+    config,
+    enabled = existsSync(daemonPaths().plistPath),
+    actions = { install: installDaemon, uninstall: uninstallDaemon },
+) {
     saveSyncConfig(config);
     const paths = daemonPaths();
-    if (!existsSync(paths.plistPath))
-        return { ok: true };
-    return installDaemon(packageRoot, config);
+    if (!enabled) {
+        return existsSync(paths.plistPath) ? actions.uninstall() : { ok: true };
+    }
+    return actions.install(packageRoot, config);
 }
