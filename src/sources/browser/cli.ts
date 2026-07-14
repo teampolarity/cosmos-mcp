@@ -15,6 +15,8 @@ const DEFAULT_WINDOW_DAYS = 180;
 // timing out and silently dropping pages on the tail of the request.
 const POST_BATCH_SIZE = 30;
 const PER_BATCH_DELAY_MS = 150;
+const MAX_D1_OVERLOAD_RETRIES = 3;
+const INITIAL_D1_OVERLOAD_DELAY_MS = 2_000;
 
 interface SyncState {
   apiBase: string;
@@ -24,6 +26,56 @@ interface SyncState {
   verbose: boolean;
   sources: Set<BrowserPage["source"]> | null;
   fetch: typeof globalThis.fetch;
+}
+
+interface BrowserBatchOptions {
+  apiBase: string;
+  token: string;
+  pages: BrowserPage[];
+  fetch: typeof globalThis.fetch;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface BrowserBatchResult {
+  response: Response;
+  errorDetail?: string;
+}
+
+function delayForTransientFailure(response: Response, detail: string, attempt: number): number | null {
+  const isD1Overload = /d1.*(?:overload|busy)|database.*(?:overload|busy)/i.test(detail);
+  if (response.status !== 429 && response.status !== 503 && !(response.status >= 500 && isD1Overload)) {
+    return null;
+  }
+
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return retryAfter * 1_000;
+
+  try {
+    const retryAfterSec = Number(JSON.parse(detail).retry_after_sec);
+    if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) return retryAfterSec * 1_000;
+  } catch {
+    // D1 may return a plain text or HTML error page while it is overloaded.
+  }
+  return INITIAL_D1_OVERLOAD_DELAY_MS * 2 ** attempt;
+}
+
+export async function postBrowserBatch(opts: BrowserBatchOptions): Promise<BrowserBatchResult> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await opts.fetch(`${opts.apiBase}/api/me/connectors/browser/visits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-MCP-Key": opts.token },
+      body: JSON.stringify({ pages: opts.pages }),
+    });
+    if (response.ok) return { response };
+
+    const errorDetail = await response.text();
+    const retryDelay = delayForTransientFailure(response, errorDetail, attempt);
+    if (retryDelay === null || attempt >= MAX_D1_OVERLOAD_RETRIES) {
+      return { response, errorDetail };
+    }
+    await sleep(retryDelay);
+  }
 }
 
 export async function runBrowserCli(argv: string[]): Promise<number> {
@@ -84,13 +136,15 @@ export async function runBrowserCli(argv: string[]): Promise<number> {
   for (let i = 0; i < pages.length; i += POST_BATCH_SIZE) {
     const batch = pages.slice(i, i + POST_BATCH_SIZE);
     try {
-      const res = await state.fetch(`${state.apiBase}/api/me/connectors/browser/visits`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-MCP-Key": state.token },
-        body: JSON.stringify({ pages: batch }),
+      const batchResult = await postBrowserBatch({
+        apiBase: state.apiBase,
+        token: state.token,
+        pages: batch,
+        fetch: state.fetch,
       });
+      const res = batchResult.response;
       if (!res.ok) {
-        const t = await res.text();
+        const t = batchResult.errorDetail || "request failed without a response body";
         process.stderr.write(`  batch ${i / POST_BATCH_SIZE + 1} failed: ${res.status} ${t.slice(0, 200)}\n`);
         failed += batch.length;
       } else {

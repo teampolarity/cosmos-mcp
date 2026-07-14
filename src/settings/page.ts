@@ -314,7 +314,7 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
         <h2>Background sync</h2>
         <div class="section-body">
           <label class="toggle-row">
-            <span>Sync iMessage automatically</span>
+            <span>Run enabled sources automatically</span>
             <input type="checkbox" id="daemon-enabled">
           </label>
           <label class="toggle-row">
@@ -328,7 +328,11 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
               <option value="24">Once a day</option>
             </select>
           </label>
-          <input type="hidden" id="src-imessage" data-src="imessage" checked>
+          <label class="toggle-row"><span>iMessage</span><input type="checkbox" id="src-imessage" data-src="imessage"></label>
+          <label class="toggle-row"><span>Browser history</span><input type="checkbox" id="src-browser" data-src="browser"></label>
+          <label class="toggle-row"><span>Calendar</span><input type="checkbox" id="src-calendar" data-src="calendar"></label>
+          <label class="toggle-row"><span>Claude Desktop</span><input type="checkbox" id="src-claude-desktop" data-src="claude_desktop"></label>
+          <label class="toggle-row"><span>Shell history</span><input type="checkbox" id="src-shell-history" data-src="shell_history"></label>
           <p class="hint">Schedule changes save automatically. Use <b>Sync now</b> on Overview for a manual pull with live progress.</p>
           <div class="status" id="daemon-status"></div>
         </div>
@@ -560,6 +564,11 @@ async function load() {
       (sr.last_run_at ? '<br><b>Last background run</b> ' + (sr.last_run_status || '—') + ' · ' + fmtTime(sr.last_run_at) : '');
     $('daemon-enabled').checked = d.installed;
     $('interval_hours').value = String(d.config.interval_hours);
+    $('src-imessage').checked = d.config.sources?.imessage !== false;
+    $('src-browser').checked = d.config.sources?.browser === true;
+    $('src-calendar').checked = d.config.sources?.calendar === true;
+    $('src-claude-desktop').checked = d.config.sources?.claude_desktop === true;
+    $('src-shell-history').checked = d.config.sources?.shell_history === true;
     $('auto_update').checked = !!d.config.auto_update;
     const ver = data.version || '?';
     $('version-label').textContent = 'v' + ver;
@@ -657,7 +666,13 @@ document.querySelectorAll('[data-sync]').forEach((btn) => {
 async function saveDaemonConfig() {
   $('daemon-status').textContent = 'Saving…';
   $('daemon-status').className = 'status';
-  const sources = { imessage: $('daemon-enabled').checked };
+  const sources = {
+    imessage: $('src-imessage').checked,
+    browser: $('src-browser').checked,
+    calendar: $('src-calendar').checked,
+    claude_desktop: $('src-claude-desktop').checked,
+    shell_history: $('src-shell-history').checked,
+  };
   try {
     await api('/api/daemon/config', {
       method: 'POST',
@@ -687,6 +702,9 @@ function scheduleSaveDaemon() {
 $('daemon-enabled').onchange = scheduleSaveDaemon;
 $('interval_hours').onchange = scheduleSaveDaemon;
 $('auto_update').onchange = scheduleSaveDaemon;
+for (const source of ['src-imessage', 'src-browser', 'src-calendar', 'src-claude-desktop', 'src-shell-history']) {
+  $(source).onchange = scheduleSaveDaemon;
+}
 
   $('photo-status').textContent = 'Saving…';
   $('photo-status').className = 'status';

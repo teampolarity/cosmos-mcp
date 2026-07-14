@@ -100,8 +100,10 @@ struct NativeSettingsView: View {
 
             sectionTitle("Sources")
             toggleRow("iMessage", keyPath: \.imessage)
-            toggleRow("Browser history", keyPath: \.browser, disabled: true)
-            toggleRow("Calendar", keyPath: \.calendar, disabled: true)
+            toggleRow("Browser history", keyPath: \.browser)
+            toggleRow("Calendar", keyPath: \.calendar)
+            toggleRow("Claude Desktop", keyPath: \.claude_desktop)
+            toggleRow("Shell history", keyPath: \.shell_history)
 
             cosmosButton(AppState.backgroundSyncInstalled ? "Background sync installed" : "Install background sync", primary: true) {
                 runSync(["daemon", "install"])
