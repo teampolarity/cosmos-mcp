@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { platform } from "node:os";
 import { INTERVAL_HOURS_OPTIONS } from "../daemon/config.js";
-import { getDaemonStatus, installDaemon, kickDaemon, uninstallDaemon, } from "../daemon/manage.js";
+import { applyDaemonConfig, getDaemonStatus, kickDaemon, } from "../daemon/manage.js";
 import { loadContacts, normalizeEmail, normalizePhone } from "../sources/imessage/contacts.js";
 import { defaultPath, loadState, saveState } from "../sources/imessage/state.js";
 import { pushMediaRulesFromState, } from "../sources/imessage/media-prefs.js";
@@ -239,21 +239,11 @@ export async function startSettingsServer(opts) {
                     res.end(JSON.stringify({ error: "invalid interval or sources" }));
                     return;
                 }
-                if (body.enabled === false) {
-                    const r = uninstallDaemon();
-                    if (!r.ok) {
-                        res.writeHead(500, { "Content-Type": "application/json" });
-                        res.end(JSON.stringify({ error: r.error }));
-                        return;
-                    }
-                }
-                else {
-                    const r = installDaemon(root, config);
-                    if (!r.ok) {
-                        res.writeHead(500, { "Content-Type": "application/json" });
-                        res.end(JSON.stringify({ error: r.error }));
-                        return;
-                    }
+                const r = applyDaemonConfig(root, config, body.enabled !== false);
+                if (!r.ok) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: r.error }));
+                    return;
                 }
                 res.writeHead(200, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ ok: true }));

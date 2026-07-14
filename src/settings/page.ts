@@ -706,6 +706,7 @@ for (const source of ['src-imessage', 'src-browser', 'src-calendar', 'src-claude
   $(source).onchange = scheduleSaveDaemon;
 }
 
+async function savePhotoSettings() {
   $('photo-status').textContent = 'Saving…';
   $('photo-status').className = 'status';
   const threads = [...$('threads').querySelectorAll('.thread')].map((row) => {

@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Recovered from the @polarity-lab/cosmos-mcp@0.9.25 published artifact.
 // Original source was not present in git or the npm tarball; runtime source: ../../../../../../tmp/cosmos-mcp-pack/package/dist/daemon/cli.js
-// `cosmos-mcp daemon <install|uninstall|status|kick>`
+// `cosmos-mcp daemon <install|apply|uninstall|status|kick>`
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -60,8 +60,18 @@ export async function runDaemonCli(sub, _rest) {
         process.stdout.write("daemon uninstalled.\n");
         return 0;
     }
+    if (action === "apply") {
+        const config = loadSyncConfig();
+        const r = applyDaemonConfig(root, config);
+        if (!r.ok) {
+            process.stderr.write(`${r.error}\n`);
+            return 1;
+        }
+        process.stdout.write("daemon configuration applied.\n");
+        return 0;
+    }
     if (action !== "install") {
-        process.stderr.write("usage: cosmos-mcp daemon <install|uninstall|status|kick>\n");
+        process.stderr.write("usage: cosmos-mcp daemon <install|apply|uninstall|status|kick>\n");
         return 1;
     }
     const config = loadSyncConfig();

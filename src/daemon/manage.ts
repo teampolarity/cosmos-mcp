@@ -186,10 +186,16 @@ export function kickDaemon() {
     }
     return { ok: true };
 }
-export function applyDaemonConfig(packageRoot, config) {
+export function applyDaemonConfig(
+    packageRoot,
+    config,
+    enabled = existsSync(daemonPaths().plistPath),
+    actions = { install: installDaemon, uninstall: uninstallDaemon },
+) {
     saveSyncConfig(config);
     const paths = daemonPaths();
-    if (!existsSync(paths.plistPath))
-        return { ok: true };
-    return installDaemon(packageRoot, config);
+    if (!enabled) {
+        return existsSync(paths.plistPath) ? actions.uninstall() : { ok: true };
+    }
+    return actions.install(packageRoot, config);
 }
