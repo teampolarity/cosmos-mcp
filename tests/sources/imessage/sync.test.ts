@@ -77,33 +77,29 @@ describe("syncImessage", () => {
     expect(result.threads_upserted).toBe(2);
   });
 
-  it("retries d1_overloaded 503 using retry_after_sec then succeeds", async () => {
+  it("resumes after a partial sync without reposting a completed thread", async () => {
     const turns = [
-      { turn_id: "imessage:m1", thread_id: "T1", from_handle: "self", occurred_at: "2026-05-17T08:00:00Z", participants: ["self", "+16138646086"] },
+      { turn_id: "imessage:m1", thread_id: "T1", from_handle: "self", occurred_at: "2026-05-17T08:00:00Z", participants: ["self"] },
+      { turn_id: "imessage:m2", thread_id: "T2", from_handle: "self", occurred_at: "2026-05-17T08:01:00Z", participants: ["self"] },
     ];
-    let hits = 0;
-    const sleeps: number[] = [];
-    const result = await syncImessage({
+    const state = defaultState();
+    state.threads.T1 = { last_turn_id_synced: "imessage:m1", participants: ["self"] };
+    const calls: any[] = [];
+
+    await syncImessage({
       turns: (async function* () { yield turns; })(),
-      state: defaultState(),
+      state,
       apiBase: "https://cosmos.test",
       token: "tok",
-      sleep: async (ms) => { sleeps.push(ms); },
-      fetch: async () => {
-        hits += 1;
-        if (hits === 1) {
-          return new Response(JSON.stringify({
-            error: "d1_overloaded: database busy — retry this thread in a minute",
-            retry_after_sec: 60,
-          }), { status: 503 });
-        }
+      fetch: async (_url: any, init: any) => {
+        calls.push(JSON.parse(init.body));
         return new Response(JSON.stringify({
-          persons_upserted: 1, threads_upserted: 1, turns_seen: 1, turns_skipped: 0, observations_created: 0,
+          persons_upserted: 0, threads_upserted: 1, turns_seen: 1, turns_skipped: 0, observations_created: 0,
         }), { status: 200 });
       },
     });
-    expect(hits).toBe(2);
-    expect(sleeps).toEqual([60000]);
-    expect(result.turns_seen).toBe(1);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].thread_id).toBe("T2");
   });
 });

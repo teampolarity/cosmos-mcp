@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# Build Cosmos.app (menu bar + background daemon launcher). Unsigned dev build.
+# Build Cosmos.app (menu bar + background daemon launcher). Use the org
+# Developer ID certificate when available, otherwise use an ad hoc signature.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+  DEV_SIGN="$(bash "$SCRIPT_DIR/resolve-sign-identity.sh")"
+else
+  DEV_SIGN="$(bash "$SCRIPT_DIR/resolve-sign-identity.sh" 2>/dev/null || true)"
+fi
 
 APP_NAME="Cosmos"
 BUNDLE_ID="com.polaritylab.cosmos-mcp-daemon"
@@ -105,10 +113,6 @@ bash "$(dirname "$0")/render-app-icons.sh" "$CONTENTS/Resources"
 SIGN_ENT_ARGS=()
 # ENTITLEMENTS="$(dirname "$0")/Cosmos.entitlements"
 
-DEV_SIGN="${SIGN_IDENTITY:-}"
-if [[ -z "$DEV_SIGN" ]]; then
-  DEV_SIGN="$(bash "$(dirname "$0")/resolve-sign-identity.sh" 2>/dev/null || true)"
-fi
 if [[ -n "$DEV_SIGN" ]]; then
   echo "→ signing with: $DEV_SIGN"
   codesign --force --options runtime --timestamp --sign "$DEV_SIGN" "$MACOS/cosmos-sync-daemon"

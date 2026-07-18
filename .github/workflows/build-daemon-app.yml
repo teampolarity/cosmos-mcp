@@ -29,14 +29,17 @@ jobs:
           mkdir -p .secrets
           printf '%s' "$NOTARY_KEY_P8" > .secrets/AuthKey.p8
       - run: npm ci
+      - run: npm run test:signing
       - name: Build, sign, notarize, staple
         env:
           SIGN_IDENTITY: ${{ secrets.SIGN_IDENTITY }}
           NOTARY_KEY_PATH: .secrets/AuthKey.p8
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          POLARITY_TEAM_ID: ${{ secrets.POLARITY_TEAM_ID }}
         run: bash scripts/build-daemon-app.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: CosmosSync.app
-          path: dist/CosmosSync.app
+          name: Cosmos.zip
+          path: dist/Cosmos.zip
+          if-no-files-found: error

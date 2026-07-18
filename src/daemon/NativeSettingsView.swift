@@ -98,17 +98,20 @@ struct NativeSettingsView: View {
                 }
             }
             .labelsHidden()
-            .onChange(of: syncConfig.interval_hours) { _ in syncConfig.save() }
+            .onChange(of: syncConfig.interval_hours) { _ in saveAndApplySyncConfig() }
+            .disabled(syncing)
 
             sectionTitle("Sources")
             toggleRow("iMessage", keyPath: \.imessage)
-            toggleRow("Browser history", keyPath: \.browser, disabled: true)
-            toggleRow("Calendar", keyPath: \.calendar, disabled: true)
+            toggleRow("Browser history", keyPath: \.browser)
+            toggleRow("Calendar", keyPath: \.calendar)
+            toggleRow("Claude Desktop", keyPath: \.claude_desktop)
+            toggleRow("Shell history", keyPath: \.shell_history)
 
             cosmosButton(AppState.backgroundSyncInstalled ? "Background sync installed" : "Install background sync", primary: true) {
                 runSync(["daemon", "install"])
             }
-            .disabled(AppState.backgroundSyncInstalled)
+            .disabled(AppState.backgroundSyncInstalled || syncing)
         }
     }
 
@@ -202,12 +205,12 @@ struct NativeSettingsView: View {
         Toggle(title, isOn: Binding(
             get: { syncConfig.sources[keyPath: keyPath] },
             set: {
-                guard !disabled else { return }
+                guard !disabled, !syncing else { return }
                 syncConfig.sources[keyPath: keyPath] = $0
-                syncConfig.save()
+                saveAndApplySyncConfig()
             }
         ))
-        .disabled(disabled)
+        .disabled(disabled || syncing)
         .foregroundColor(disabled ? CosmosTheme.textFaint : CosmosTheme.text)
     }
 
@@ -231,6 +234,13 @@ struct NativeSettingsView: View {
         health = AppState.overallHealth(fda: fdaStatus)
         lastImessage = AppState.relativeTime(AppState.lastImessageSyncDate())
         syncConfig = SyncConfig.load()
+    }
+
+    private func saveAndApplySyncConfig() {
+        syncConfig.save()
+        if AppState.backgroundSyncInstalled {
+            runSync(["daemon", "apply"])
+        }
     }
 
     private func runSync(_ args: [String]) {

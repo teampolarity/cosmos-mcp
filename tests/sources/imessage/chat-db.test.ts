@@ -79,7 +79,7 @@ beforeAll(() => {
   const c1Pattern = [0, 0, 1, 0, 0, 1, 0, 0]; // 6 incoming, 2 outgoing
   for (let i = 0; i < c1Pattern.length; i++) {
     const date = T0 + BigInt(i) * MIN;
-    insertMsg.run(rowId, `m-c1-${i}`, `t${i}`, 1, c1Pattern[i], date);
+    insertMsg.run(rowId, `m-c1-${i}`, `substantive fixture message ${i}`, 1, c1Pattern[i], date);
     cmj.run(1, rowId);
     rowId++;
   }
@@ -90,7 +90,7 @@ beforeAll(() => {
   const c2Pattern = [0, 0, 1, 0, 0, 1, 0, 0];
   for (let i = 0; i < c2Pattern.length; i++) {
     const date = T_AFTER + BigInt(i) * MIN;
-    insertMsg.run(rowId, `m-c2-${i}`, `t${i}`, 2, c2Pattern[i], date);
+    insertMsg.run(rowId, `m-c2-${i}`, `substantive fixture message ${i}`, 2, c2Pattern[i], date);
     cmj.run(2, rowId);
     rowId++;
   }
