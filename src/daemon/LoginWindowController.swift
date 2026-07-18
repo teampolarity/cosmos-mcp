@@ -28,13 +28,22 @@ final class LoginWindowController: NSWindowController, ASAuthorizationController
     init() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 460),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Cosmos"
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
-        window.backgroundColor = NSColor.black
+
+        let visualEffect = NSVisualEffectView()
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.material = .hudWindow
+        visualEffect.autoresizingMask = [.width, .height]
+        window.contentView = visualEffect
+
         super.init(window: window)
         buildUI()
     }
@@ -57,8 +66,6 @@ final class LoginWindowController: NSWindowController, ASAuthorizationController
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        content.wantsLayer = true
-        content.layer?.backgroundColor = NSColor.black.cgColor
 
         titleLabel = label("cosmos", size: 28, weight: .medium, color: .white)
         subtitleLabel = label("cosmos for mac — sign in to continue", size: 11, weight: .regular, color: NSColor(white: 0.55, alpha: 1))
@@ -108,7 +115,7 @@ final class LoginWindowController: NSWindowController, ASAuthorizationController
         NSLayoutConstraint.activate([
             stackView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 28),
             stackView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28),
-            stackView.topAnchor.constraint(equalTo: content.topAnchor, constant: 36),
+            stackView.topAnchor.constraint(equalTo: content.topAnchor, constant: 54),
             emailField.widthAnchor.constraint(equalTo: stackView.widthAnchor),
             codeField.widthAnchor.constraint(equalTo: stackView.widthAnchor),
             primaryButton.widthAnchor.constraint(equalTo: stackView.widthAnchor),

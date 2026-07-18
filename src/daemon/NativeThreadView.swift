@@ -62,28 +62,11 @@ struct NativeThreadView: View {
             if let moment = sheetMoment {
                 receiptsSheet(moment)
             }
-
-            if showConnect {
-                ConnectSheetView(
-                    onClose: { showConnect = false },
-                    onOpenSettings: {
-                        showConnect = false
-                        onOpenSettings()
-                    },
-                    onLoadThread: { loadMoments(refresh: false) }
-                )
-            }
         }
         .onAppear {
             loadOnboarding()
             loadMoments(refresh: false)
             maybeNudgeConnect()
-        }
-        .onChange(of: showConnect) { open in
-            if !open && moments.isEmpty { loadMoments(refresh: false) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cosmosShowConnect)) { _ in
-            showConnect = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosRefreshThread)) { _ in
             loadMoments(refresh: true, preserveMomentId: active?.id)
@@ -100,21 +83,6 @@ struct NativeThreadView: View {
 
     private var topBar: some View {
         VStack(spacing: 8) {
-            HStack {
-                Text("cosmos")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(CosmosTheme.text)
-                Spacer()
-                Button("Connect") { showConnect = true }
-                    .font(.system(size: 9, weight: .regular))
-                    .textCase(.uppercase)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .foregroundColor(CosmosTheme.accent)
-                    .cosmosCapsule(fill: CosmosTheme.accentDim, stroke: CosmosTheme.accent.opacity(0.35))
-                    .buttonStyle(.plain)
-            }
-
             if moments.count >= 1 {
                 HStack(spacing: 8) {
                     if moments.count > 1 {
@@ -1008,7 +976,7 @@ struct NativeThreadView: View {
         guard !didNudgeConnect else { return }
         didNudgeConnect = true
         if FdaChecker.loadPersistedStatus() == .denied {
-            showConnect = true
+            NotificationCenter.default.post(name: .cosmosShowConnect, object: nil)
         }
     }
 

@@ -5,7 +5,6 @@ import SwiftUI
 struct NativeTodayView: View {
     var onOpenSettings: () -> Void = {}
 
-    @State private var showConnect = false
     @State private var loading = true
     @State private var payload: TodayPayload?
     @State private var errorMessage = ""
@@ -14,61 +13,23 @@ struct NativeTodayView: View {
     @State private var onboarding: ThreadOnboardingStatus?
     @State private var onboardingAnswer = ""
     @State private var showOnboarding = false
+    @State private var expandedItemId: String? = nil
 
     var body: some View {
         ZStack {
-            CosmosTheme.void.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                topBar
-                content
-            }
+            content
 
             if showOnboarding, let ob = onboarding, !ob.complete {
                 onboardingOverlay(ob)
-            }
-
-            if showConnect {
-                ConnectSheetView(
-                    onClose: { showConnect = false },
-                    onOpenSettings: {
-                        showConnect = false
-                        onOpenSettings()
-                    },
-                    onLoadThread: { loadToday() }
-                )
             }
         }
         .onAppear {
             loadOnboarding()
             loadToday()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .cosmosShowConnect)) { _ in
-            showConnect = true
-        }
         .onReceive(NotificationCenter.default.publisher(for: .cosmosRefreshThread)) { _ in
             loadToday()
         }
-    }
-
-    private var topBar: some View {
-        HStack {
-            Text("cosmos")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(CosmosTheme.text)
-            Spacer()
-            Button("Connect") { showConnect = true }
-                .font(.system(size: 9, weight: .regular))
-                .textCase(.uppercase)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .foregroundColor(CosmosTheme.accent)
-                .cosmosCapsule(fill: CosmosTheme.accentDim, stroke: CosmosTheme.accent.opacity(0.35))
-                .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -83,10 +44,21 @@ struct NativeTodayView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     hero(payload)
                     if let frog = payload.frog {
-                        itemCard(frog)
+                        frogCard(frog)
                     }
-                    ForEach(payload.supports) { item in
-                        itemCard(item)
+                    if !payload.supports.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("quick wins")
+                                .font(.system(size: 10, design: .monospaced))
+                                .textCase(.uppercase)
+                                .foregroundColor(CosmosTheme.textFaint)
+                                .padding(.top, 8)
+                                .padding(.bottom, 4)
+
+                            ForEach(payload.supports) { item in
+                                supportRow(item)
+                            }
+                        }
                     }
                     if !payload.statsLine.isEmpty {
                         Text(payload.statsLine)
@@ -146,24 +118,75 @@ struct NativeTodayView: View {
         }
     }
 
-    private func itemCard(_ item: TodayItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if item.isFrog {
-                Text("frog")
+    private func receiptView(_ item: TodayItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(item.receipt.source)
                     .font(.system(size: 9, design: .monospaced))
                     .textCase(.uppercase)
                     .foregroundColor(CosmosTheme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .cosmosCapsule(fill: CosmosTheme.accentDim, stroke: CosmosTheme.accent.opacity(0.25))
             }
-            Text(item.label)
-                .font(.system(size: item.isFrog ? 18 : 16, weight: .medium))
-                .foregroundColor(CosmosTheme.text)
-                .fixedSize(horizontal: false, vertical: true)
-            if !item.why.isEmpty {
-                Text(item.why)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(item.isFrog ? CosmosTheme.textSecondary : CosmosTheme.textFaint)
+
+            if !item.receipt.reason.isEmpty {
+                Text(item.receipt.reason)
+                    .font(.system(size: 11))
+                    .foregroundColor(CosmosTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if !item.receipt.excerpt.isEmpty {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(CosmosTheme.accent)
+                        .frame(width: 2)
+                        .padding(.vertical, 2)
+
+                    Text(item.receipt.excerpt)
+                        .font(.system(size: 12))
+                        .italic()
+                        .foregroundColor(CosmosTheme.textSecondary)
+                        .padding(.leading, 10)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func frogCard(_ item: TodayItem) -> some View {
+        let isExpanded = expandedItemId == item.id
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("the hard one")
+                        .font(.system(size: 9, design: .monospaced))
+                        .textCase(.uppercase)
+                        .foregroundColor(CosmosTheme.accent)
+
+                    Text(item.label)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(CosmosTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+
+            if isExpanded {
+                receiptView(item)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if !item.why.isEmpty {
+                Text(item.why)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(CosmosTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: 8) {
                 Button("done") { submit(item, action: "done") }
                     .font(.system(size: 12, weight: .semibold))
@@ -175,6 +198,7 @@ struct NativeTodayView: View {
                         stroke: CosmosTheme.accent.opacity(0.35)
                     )
                     .buttonStyle(.plain)
+
                 Menu {
                     Button("wrong") { submit(item, action: "wrong") }
                     Button("not important") { submit(item, action: "not_important") }
@@ -192,10 +216,99 @@ struct NativeTodayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cosmosRoundedRect(
             20,
-            fill: item.isFrog
-                ? CosmosTheme.surfaceRaised.opacity(0.95)
-                : CosmosTheme.surfaceRaised,
-            stroke: item.isFrog ? CosmosTheme.accent.opacity(0.36) : CosmosTheme.border
+            fill: CosmosTheme.surfaceRaised.opacity(0.95),
+            stroke: CosmosTheme.accent.opacity(0.36)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if expandedItemId == item.id {
+                    expandedItemId = nil
+                } else {
+                    expandedItemId = item.id
+                }
+            }
+        }
+    }
+
+    private func supportRow(_ item: TodayItem) -> some View {
+        let isExpanded = expandedItemId == item.id
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.label)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(CosmosTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !isExpanded && !item.why.isEmpty {
+                        Text(item.why)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(CosmosTheme.textFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer()
+
+                if !isExpanded {
+                    Text(item.sourceLabel)
+                        .font(.system(size: 9, design: .monospaced))
+                        .textCase(.uppercase)
+                        .foregroundColor(CosmosTheme.textFaint)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .cosmosCapsule(fill: Color.clear, stroke: CosmosTheme.border)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if expandedItemId == item.id {
+                        expandedItemId = nil
+                    } else {
+                        expandedItemId = item.id
+                    }
+                }
+            }
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    receiptView(item)
+
+                    HStack(spacing: 8) {
+                        Button("done") { submit(item, action: "done") }
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .foregroundColor(CosmosTheme.accent)
+                            .cosmosCapsule(
+                                fill: CosmosTheme.accentDim,
+                                stroke: CosmosTheme.accent.opacity(0.35)
+                            )
+                            .buttonStyle(.plain)
+
+                        Menu {
+                            Button("wrong") { submit(item, action: "wrong") }
+                            Button("not important") { submit(item, action: "not_important") }
+                        } label: {
+                            Text("⋯")
+                                .font(.system(size: 16))
+                                .frame(width: 36, height: 36)
+                                .foregroundColor(CosmosTheme.textFaint)
+                                .cosmosCapsule(fill: CosmosTheme.surfaceRaised, stroke: CosmosTheme.border)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .cosmosRoundedRect(
+            12,
+            fill: isExpanded ? CosmosTheme.surfaceRaised : Color.clear,
+            stroke: isExpanded ? CosmosTheme.border : nil
         )
     }
 
@@ -257,8 +370,11 @@ struct NativeTodayView: View {
         CosmosAPIClient.submitTodayFeedback(item: item, action: action) { result in
             switch result {
             case .success(let next):
-                payload = next
-                morningEnabled = next.morningText
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expandedItemId = nil
+                    payload = next
+                    morningEnabled = next.morningText
+                }
                 switch action {
                 case "done": flashStatus("marked done")
                 case "wrong": flashStatus("got it — less like this tomorrow")

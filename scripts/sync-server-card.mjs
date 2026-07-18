@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { TOOLS } from '../dist/tools/index.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import pkg from '../package.json' with { type: 'json' };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workerPath = path.join(__dirname, '../worker/src/index.ts');
@@ -14,17 +15,24 @@ const tools = TOOLS.map((t) => {
 });
 
 const cardObj = {
-  serverInfo: { name: 'cosmos-mcp', version: '${PACKAGE_VERSION}' },
+  serverInfo: { name: 'cosmos-mcp', version: pkg.version },
   tools,
   resources: [],
   prompts: [],
 };
 
-const cardJson = JSON.stringify(cardObj);
+// The card is embedded in a TypeScript template literal. Escape JSON content
+// that would otherwise terminate or interpolate that literal.
+const cardJson = JSON.stringify(cardObj)
+  .replace(/\\/g, '\\\\')
+  .replace(/`/g, '\\`')
+  .replace(/\$\{/g, '\\${');
 const workerSrc = fs.readFileSync(workerPath, 'utf8');
-const next = workerSrc.replace(
-  /const SERVER_CARD = `[\s\S]*?`;/,
-  `const SERVER_CARD = \`${cardJson}\`;`,
-);
+const next = workerSrc
+  .replace(/const PACKAGE_VERSION = "[^"]+";/, `const PACKAGE_VERSION = "${pkg.version}";`)
+  .replace(
+    /const SERVER_CARD = `[\s\S]*?`;/,
+    `const SERVER_CARD = \`${cardJson}\`;`,
+  );
 fs.writeFileSync(workerPath, next);
 console.log(`updated ${workerPath} (${tools.length} tools)`);

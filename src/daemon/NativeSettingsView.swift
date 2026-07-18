@@ -26,7 +26,9 @@ struct NativeSettingsView: View {
                     Text("Advanced").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.top, 28)
+                .padding(.bottom, 16)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {

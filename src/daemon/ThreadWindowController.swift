@@ -4,26 +4,40 @@ import AppKit
 import SwiftUI
 
 final class ThreadWindowController: NSWindowController {
-    private var hosting: NSHostingController<NativeTodayView>!
+    private var hosting: NSHostingController<CosmosAppView>!
 
     init(menuApp: CosmosMenuApp) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 780),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 800),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Cosmos"
-        window.minSize = NSSize(width: 360, height: 560)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.minSize = NSSize(width: 420, height: 560)
         window.isReleasedWhenClosed = false
-        window.backgroundColor = .black
+        window.backgroundColor = NSColor(white: 0.02, alpha: 1.0)
         super.init(window: window)
 
-        let view = NativeTodayView(onOpenSettings: { [weak menuApp] in
+        let view = CosmosAppView(onOpenSettings: { [weak menuApp] in
             menuApp?.openPreferences()
         })
         hosting = NSHostingController(rootView: view)
-        window.contentView = hosting.view
+
+        let visualEffect = NSVisualEffectView()
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.material = .hudWindow
+        visualEffect.autoresizingMask = [.width, .height]
+        visualEffect.frame = window.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 520, height: 800)
+
+        let hostingView = hosting.view
+        hostingView.frame = visualEffect.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        visualEffect.addSubview(hostingView)
+        window.contentView = visualEffect
     }
 
     @available(*, unavailable)

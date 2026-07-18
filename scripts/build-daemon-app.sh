@@ -56,6 +56,9 @@ build_universal cosmos-sync \
   src/daemon/ConnectSheetView.swift \
   src/daemon/NativeSettingsView.swift \
   src/daemon/NativeTodayView.swift \
+  src/daemon/NativeThreadView.swift \
+  src/daemon/NativeKnowView.swift \
+  src/daemon/CosmosAppView.swift \
   src/daemon/SettingsWindowController.swift \
   src/daemon/CosmosWebStore.swift \
   src/daemon/ThreadWindowController.swift

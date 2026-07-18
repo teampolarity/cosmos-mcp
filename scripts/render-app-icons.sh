@@ -18,10 +18,7 @@ render_svg() {
     rsvg-convert -w "$size" -h "$size" "$svg" -o "$out"
     return
   fi
-  qlmanage -t -s "$size" -o "$WORK" "$svg" >/dev/null 2>&1
-  local base
-  base="$(basename "$svg")"
-  mv "$WORK/${base}.png" "$out"
+  sips -z "$size" "$size" -s format png "$svg" --out "$out" >/dev/null 2>&1
 }
 
 ICONSET="$WORK/AppIcon.iconset"

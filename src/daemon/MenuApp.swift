@@ -60,6 +60,13 @@ final class CosmosMenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCe
         refreshTimer?.invalidate()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            presentThread()
+        }
+        return true
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             McpURLHandler.handle(url, notify: notify)

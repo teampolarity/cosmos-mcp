@@ -220,11 +220,48 @@ struct ProvenanceStep: Identifiable {
     let excerpt: String
 }
 
+struct VetoItem: Identifiable {
+    let id = UUID()
+    let label: String
+    let action: String
+    let source: String
+    let at: String
+}
+
+struct BeliefItem: Identifiable {
+    let id: Int
+    let type: String
+    let label: String
+    let excerpt: String
+    let source: String
+}
+
+struct KnowsSources {
+    let imessageTurns: Int
+    let calendarEvents: Int
+    let graphNodes: Int
+}
+
+struct KnowsPayload {
+    let intent: String?
+    let fadeLabels: [String]
+    let beliefs: [BeliefItem]
+    let vetoes: [VetoItem]
+    let sources: KnowsSources
+    let wrongOrFadedCount: Int
+}
+
 struct ThreadOnboardingStatus {
     let complete: Bool
     let question: String
     let progress: Int
     let total: Int
+}
+
+struct TodayReceipt {
+    let source: String
+    let reason: String
+    let excerpt: String
 }
 
 struct TodayItem: Identifiable {
@@ -234,19 +271,29 @@ struct TodayItem: Identifiable {
     let source: String
     let sourceLabel: String
     let role: String
+    let receipt: TodayReceipt
 
     var isFrog: Bool { role == "frog" }
 
     static func parse(_ json: [String: Any]) -> TodayItem? {
         guard let label = json["label"] as? String, !label.isEmpty else { return nil }
         let id = json["id"] as? String ?? label
+
+        let receiptJson = json["receipt"] as? [String: Any]
+        let receipt = TodayReceipt(
+            source: receiptJson?["source"] as? String ?? json["source_label"] as? String ?? json["source"] as? String ?? "receipt",
+            reason: receiptJson?["reason"] as? String ?? json["why"] as? String ?? "",
+            excerpt: receiptJson?["excerpt"] as? String ?? json["why"] as? String ?? json["label"] as? String ?? ""
+        )
+
         return TodayItem(
             id: id,
             label: label,
             why: json["why"] as? String ?? json["source_label"] as? String ?? "",
             source: json["source"] as? String ?? "",
             sourceLabel: json["source_label"] as? String ?? "",
-            role: json["role"] as? String ?? "support"
+            role: json["role"] as? String ?? "support",
+            receipt: receipt
         )
     }
 }
@@ -603,5 +650,99 @@ enum CosmosAPIClient {
         let src = step["source"] as? String ?? kind
         let at = step["at"] as? String ?? ""
         return [src, at].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    static func fetchKnows(completion: @escaping (Result<KnowsPayload, APIError>) -> Void) {
+        request(path: "/api/me/knows") { result in
+            switch result {
+            case .success(let json):
+                completion(.success(parseKnows(json)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    static func updateKnows(action: String, body: [String: Any], completion: @escaping (Result<KnowsPayload, APIError>) -> Void) {
+        var reqBody = body
+        reqBody["action"] = action
+        request(path: "/api/me/knows", method: "POST", body: reqBody) { result in
+            switch result {
+            case .success(let json):
+                if let knowsJson = json["knows"] as? [String: Any] {
+                    completion(.success(parseKnows(knowsJson)))
+                } else {
+                    completion(.success(parseKnows(json)))
+                }
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
+    }
+
+    private static func parseKnows(_ json: [String: Any]) -> KnowsPayload {
+        let intent = json["intent"] as? String
+
+        let taste = json["taste"] as? [String: Any] ?? [:]
+        let fadeLabels = taste["fade_labels"] as? [String] ?? []
+
+        let beliefsRaw = json["beliefs"] as? [[String: Any]] ?? []
+        let beliefs = beliefsRaw.compactMap { b -> BeliefItem? in
+            guard let id = b["id"] as? Int ?? (b["id"] as? String).flatMap(Int.init) else { return nil }
+            return BeliefItem(
+                id: id,
+                type: b["type"] as? String ?? "",
+                label: b["label"] as? String ?? "",
+                excerpt: b["excerpt"] as? String ?? "",
+                source: b["source"] as? String ?? ""
+            )
+        }
+
+        let vetoesRaw = json["vetoes"] as? [[String: Any]] ?? []
+        let vetoes = vetoesRaw.map { v -> VetoItem in
+            VetoItem(
+                label: v["label"] as? String ?? "",
+                action: v["action"] as? String ?? "",
+                source: v["source"] as? String ?? "",
+                at: v["at"] as? String ?? ""
+            )
+        }
+
+        let sourcesJson = json["sources"] as? [String: Any] ?? [:]
+        let sources = KnowsSources(
+            imessageTurns: sourcesJson["imessage_turns"] as? Int ?? 0,
+            calendarEvents: sourcesJson["calendar_events"] as? Int ?? 0,
+            graphNodes: sourcesJson["graph_nodes"] as? Int ?? 0
+        )
+
+        let training = json["training"] as? [String: Any] ?? [:]
+        let wrongOrFadedCount = training["wrong_or_faded"] as? Int ?? 0
+
+        return KnowsPayload(
+            intent: intent,
+            fadeLabels: fadeLabels,
+            beliefs: beliefs,
+            vetoes: vetoes,
+            sources: sources,
+            wrongOrFadedCount: wrongOrFadedCount
+        )
+    }
+    static func submitCapture(text: String, completion: @escaping (Result<String, APIError>) -> Void) {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let body: [String: Any] = [
+            "content": text,
+            "local_time": iso.string(from: Date()),
+            "source": "mac"
+        ]
+        request(path: "/api/capture", method: "POST", body: body) { result in
+            switch result {
+            case .success(let json):
+                let reply = json["reply"] as? String ?? ""
+                completion(.success(reply))
+            case .failure(let err):
+                completion(.failure(err))
+            }
+        }
     }
 }
