@@ -17,6 +17,7 @@ const DEFAULT_HISTORY_PATHS = [
   path.join(os.homedir(), ".bash_history"),
   path.join(os.homedir(), ".config", "fish", "fish_history"),
 ];
+const PAGES_FALLBACK_ORIGIN = "https://cosmos-2wu.pages.dev";
 
 export interface SyncOptions {
   state: ShellHistoryState;
@@ -120,9 +121,13 @@ export async function syncShellHistory(opts: SyncOptions): Promise<SyncResult> {
   const principal = await whoami(f, opts.apiBase, opts.token);
   if (!principal) throw new Error("cosmos rejected the MCP key (whoami 401)");
 
-  const res = await f(`${opts.apiBase}/api/polarity/source-page`, {
+  const sourcePageRequest: RequestInit = {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-MCP-Key": opts.token },
+    headers: {
+      "Content-Type": "application/json",
+      "X-MCP-Key": opts.token,
+      "User-Agent": "cosmos-mcp/shell-history",
+    },
     body: JSON.stringify({
       polarity_user_id: principal.polarity_user_id,
       source: "shell-history",
@@ -133,7 +138,19 @@ export async function syncShellHistory(opts: SyncOptions): Promise<SyncResult> {
       source_created_at: sourceCreatedAt,
       source_edited_at: sourceEditedAt,
     }),
-  });
+  };
+  let res = await f(`${opts.apiBase}/api/polarity/source-page`, sourcePageRequest);
+
+  // The custom production domain occasionally serves a Cloudflare bot-block
+  // page before the authenticated Pages Function can see this connector POST.
+  // The Pages hostname resolves to the same production Function without that
+  // zone-level challenge, so retry only this known edge failure there.
+  if (res.status === 403 && usesCustomProductionDomain(opts.apiBase)) {
+    const edgeDetail = await res.clone().text();
+    if (isCloudflareBlock(edgeDetail)) {
+      res = await f(`${PAGES_FALLBACK_ORIGIN}/api/polarity/source-page`, sourcePageRequest);
+    }
+  }
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(`cosmos rejected source-page: ${res.status} ${detail}`);
@@ -152,6 +169,18 @@ export async function syncShellHistory(opts: SyncOptions): Promise<SyncResult> {
     status: (data.status as SyncResult["status"]) ?? "created",
     node_id: data.node_id,
   };
+}
+
+function usesCustomProductionDomain(apiBase: string): boolean {
+  try {
+    return new URL(apiBase).hostname === "cosmos.polarity-lab.com";
+  } catch {
+    return false;
+  }
+}
+
+function isCloudflareBlock(detail: string): boolean {
+  return /attention required\s*!?\s*\|\s*cloudflare|cf-error-details|performance\s*&amp;\s*security\s*by\s*cloudflare/i.test(detail);
 }
 
 function pickHistoryPath(): string | null {
