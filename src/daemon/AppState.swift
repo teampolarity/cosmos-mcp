@@ -112,6 +112,34 @@ enum AppState {
         lastImessageSyncDate() ?? lastBackgroundRunDate()
     }
 
+    /// The iMessage control must only report the state of the iMessage source.
+    /// A failure from another scheduled connector does not make Messages stale.
+    static func imessageStatus(
+        fda: FdaStatus,
+        lastSyncAt: Date?,
+        daemon: DaemonTickStatus?
+    ) -> String {
+        if fda == .denied { return "needs_full_disk_access" }
+        if let exit = daemon?.imessageExit, exit != 0 { return "failed" }
+        if lastSyncAt != nil { return "ok" }
+        return backgroundSyncInstalled ? "waiting" : "not_configured"
+    }
+
+    static func backgroundFailureDetail(daemon: DaemonTickStatus?) -> String? {
+        guard let daemon else { return nil }
+        let failures: [String] = [
+            ("Browser History", daemon.browserExit),
+            ("Calendar", daemon.calendarExit),
+            ("Claude Desktop", daemon.claudeDesktopExit),
+            ("Shell History", daemon.shellHistoryExit),
+        ]
+        .compactMap { name, exit in
+            guard let exit, exit != 0 else { return nil }
+            return name
+        }
+        return failures.isEmpty ? nil : failures.joined(separator: ", ")
+    }
+
     static func overallHealth(fda: FdaStatus) -> String {
         if fda == .denied { return "needs_full_disk_access" }
         if let tick = loadDaemonTick() {

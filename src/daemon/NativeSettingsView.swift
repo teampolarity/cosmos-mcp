@@ -12,7 +12,12 @@ struct NativeSettingsView: View {
     @State private var fdaStatus: FdaStatus = FdaChecker.loadPersistedStatus()
     @State private var syncConfig = SyncConfig.load()
     @State private var lastImessage = AppState.relativeTime(AppState.lastImessageSyncDate())
-    @State private var health = AppState.overallHealth(fda: FdaChecker.loadPersistedStatus())
+    @State private var imessageHealth = AppState.imessageStatus(
+        fda: FdaChecker.loadPersistedStatus(),
+        lastSyncAt: AppState.lastImessageSyncDate(),
+        daemon: AppState.loadDaemonTick()
+    )
+    @State private var backgroundFailure = AppState.backgroundFailureDetail(daemon: AppState.loadDaemonTick())
     @State private var syncing = false
     @State private var statusMessage = ""
     @State private var version = "v\(McpRunner.packageVersion)"
@@ -66,9 +71,14 @@ struct NativeSettingsView: View {
             Text("Last iMessage sync: \(lastImessage)")
                 .font(.system(size: 12))
                 .foregroundColor(CosmosTheme.textMuted)
-            Text("Status: \(health.replacingOccurrences(of: "_", with: " "))")
+            Text("iMessage: \(imessageHealthLabel)")
                 .font(.system(size: 12))
                 .foregroundColor(CosmosTheme.textMuted)
+            if let backgroundFailure {
+                Text("\(backgroundFailure) needs attention in the background sync.")
+                    .font(.system(size: 12))
+                    .foregroundColor(CosmosTheme.textMuted)
+            }
             HStack(spacing: 8) {
                 cosmosButton("Sync iMessage now", primary: true) { runSync(["imessage", "sync"]) }
                 cosmosButton("Run background job", primary: false) { runSync(["daemon", "kick"]) }
@@ -152,7 +162,7 @@ struct NativeSettingsView: View {
                         let s = FdaChecker.checkAndPersist()
                         DispatchQueue.main.async {
                             fdaStatus = s
-                            health = AppState.overallHealth(fda: s)
+                            refreshLocalState()
                             onRecheckFda()
                             onMenuRebuild()
                         }
@@ -231,9 +241,26 @@ struct NativeSettingsView: View {
 
     private func refreshLocalState() {
         fdaStatus = FdaChecker.loadPersistedStatus()
-        health = AppState.overallHealth(fda: fdaStatus)
-        lastImessage = AppState.relativeTime(AppState.lastImessageSyncDate())
+        let lastSyncAt = AppState.lastImessageSyncDate()
+        let daemon = AppState.loadDaemonTick()
+        lastImessage = AppState.relativeTime(lastSyncAt)
+        imessageHealth = AppState.imessageStatus(
+            fda: fdaStatus,
+            lastSyncAt: lastSyncAt,
+            daemon: daemon
+        )
+        backgroundFailure = AppState.backgroundFailureDetail(daemon: daemon)
         syncConfig = SyncConfig.load()
+    }
+
+    private var imessageHealthLabel: String {
+        switch imessageHealth {
+        case "ok": return "working"
+        case "failed": return "failed"
+        case "needs_full_disk_access": return "needs Full Disk Access"
+        case "waiting": return "waiting for its first run"
+        default: return "not configured"
+        }
     }
 
     private func saveAndApplySyncConfig() {
