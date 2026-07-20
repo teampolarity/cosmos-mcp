@@ -6,6 +6,21 @@ import { describe, expect, it } from "vitest";
 import { applyDaemonConfig, buildRunner } from "../../src/daemon/manage.js";
 
 describe("daemon runner", () => {
+  it("runs Shell History before the slower browser backlog", () => {
+    const runner = buildRunner("/tmp/npx", {
+      interval_hours: 4,
+      sources: {
+        imessage: true,
+        browser: true,
+        calendar: true,
+        claude_desktop: true,
+        shell_history: true,
+      },
+    });
+
+    expect(runner.indexOf("# shell-history")).toBeLessThan(runner.indexOf("# browser"));
+  });
+
   it("writes each source's actual numeric exit status as valid JSON", () => {
     const dir = mkdtempSync(join(tmpdir(), "cosmos-daemon-test-"));
     try {

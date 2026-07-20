@@ -21,10 +21,12 @@ export function buildRunner(npxPath, config) {
     ];
     const sources = [
         { key: "imessage", label: "imessage", cmd: "imessage sync" },
-        { key: "browser", label: "browser", cmd: "browser sync" },
         { key: "calendar", label: "calendar", cmd: "calendar sync" },
         { key: "claude_desktop", label: "claude-desktop", cmd: "claude-desktop sync" },
         { key: "shell_history", label: "shell-history", cmd: "shell-history sync" },
+        // Browser backfills can be large and slow. Keep them last so they do
+        // not prevent the incremental, high-signal sources from finishing.
+        { key: "browser", label: "browser", cmd: "browser sync" },
     ];
     const statusVars = [];
     for (const s of sources) {
