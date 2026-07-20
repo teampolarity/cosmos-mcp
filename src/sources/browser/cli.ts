@@ -17,6 +17,7 @@ const POST_BATCH_SIZE = 30;
 const PER_BATCH_DELAY_MS = 150;
 const MAX_D1_OVERLOAD_RETRIES = 3;
 const INITIAL_D1_OVERLOAD_DELAY_MS = 2_000;
+const BATCH_TIMEOUT_MS = 60_000;
 
 interface SyncState {
   apiBase: string;
@@ -34,15 +35,17 @@ interface BrowserBatchOptions {
   pages: BrowserPage[];
   fetch: typeof globalThis.fetch;
   sleep?: (ms: number) => Promise<void>;
+  timeoutMs?: number;
 }
 
 export interface BrowserBatchResult {
   response: Response;
   errorDetail?: string;
+  summary?: { created?: number; updated?: number };
 }
 
 function delayForTransientFailure(response: Response, detail: string, attempt: number): number | null {
-  const isD1Overload = /d1.*(?:overload|busy)|database.*(?:overload|busy)/i.test(detail);
+  const isD1Overload = /(?:d1|database).*?(?:overload|busy|cpu time limit|was reset)/i.test(detail);
   if (response.status !== 429 && response.status !== 503 && !(response.status >= 500 && isD1Overload)) {
     return null;
   }
@@ -61,20 +64,42 @@ function delayForTransientFailure(response: Response, detail: string, attempt: n
 
 export async function postBrowserBatch(opts: BrowserBatchOptions): Promise<BrowserBatchResult> {
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const timeoutMs = opts.timeoutMs ?? BATCH_TIMEOUT_MS;
   for (let attempt = 0; ; attempt += 1) {
-    const response = await opts.fetch(`${opts.apiBase}/api/me/connectors/browser/visits`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-MCP-Key": opts.token },
-      body: JSON.stringify({ pages: opts.pages }),
-    });
-    if (response.ok) return { response };
+    const controller = new AbortController();
+    var timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    try {
+      const response = await opts.fetch(`${opts.apiBase}/api/me/connectors/browser/visits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-MCP-Key": opts.token },
+        body: JSON.stringify({ pages: opts.pages }),
+        signal: controller.signal,
+      });
 
-    const errorDetail = await response.text();
-    const retryDelay = delayForTransientFailure(response, errorDetail, attempt);
-    if (retryDelay === null || attempt >= MAX_D1_OVERLOAD_RETRIES) {
-      return { response, errorDetail };
+      if (response.ok) {
+        const summary = await response.json() as { created?: number; updated?: number };
+        return { response, summary };
+      }
+
+      const errorDetail = await response.text();
+      const retryDelay = delayForTransientFailure(response, errorDetail, attempt);
+      if (retryDelay === null || attempt >= MAX_D1_OVERLOAD_RETRIES) {
+        return { response, errorDetail };
+      }
+      await sleep(retryDelay);
+    } catch (error) {
+      if (timedOut && attempt < MAX_D1_OVERLOAD_RETRIES) {
+        await sleep(INITIAL_D1_OVERLOAD_DELAY_MS * 2 ** attempt);
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    await sleep(retryDelay);
   }
 }
 
@@ -148,7 +173,7 @@ export async function runBrowserCli(argv: string[]): Promise<number> {
         process.stderr.write(`  batch ${i / POST_BATCH_SIZE + 1} failed: ${res.status} ${t.slice(0, 200)}\n`);
         failed += batch.length;
       } else {
-        const j = await res.json() as { created?: number; updated?: number };
+        const j = batchResult.summary || {};
         created += j.created || 0;
         updated += j.updated || 0;
         sent += batch.length;
