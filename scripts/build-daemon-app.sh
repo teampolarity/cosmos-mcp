@@ -77,6 +77,7 @@ build_universal cosmos-sync \
   src/daemon/NativeThreadView.swift \
   src/daemon/NativeKnowView.swift \
   src/daemon/CosmosAppView.swift \
+  src/daemon/CosmosMainView.swift \
   src/daemon/SettingsWindowController.swift \
   src/daemon/CosmosWebStore.swift \
   src/daemon/ThreadWindowController.swift
