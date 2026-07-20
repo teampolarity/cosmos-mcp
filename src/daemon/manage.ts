@@ -28,21 +28,19 @@ export function buildRunner(npxPath, config) {
         // not prevent the incremental, high-signal sources from finishing.
         { key: "browser", label: "browser", cmd: "browser sync" },
     ];
-    const statusVars = [];
+    const completedStatusVars = [];
     for (const s of sources) {
         if (!config.sources[s.key])
             continue;
         const shellVar = s.label.toUpperCase().replace(/-/g, "_") + "_EXIT";
         const jsonKey = s.label.replace(/-/g, "_") + "_exit";
-        statusVars.push({ shell: shellVar, json: jsonKey });
         blocks.push(`# ${s.label}`, `"${npxPath}" -y @polarity-lab/cosmos-mcp ${s.cmd} 2>&1 \\`, `  | /usr/bin/sed "s/^/[${s.label}] /"`, `${shellVar}=\${PIPESTATUS[0]}`, `echo "[$(ts)] ${s.label} exit=$${shellVar}"`, "");
-    }
-    blocks.push('echo "[$(ts)] daemon tick done"', "");
-    if (statusVars.length) {
-        const jsonFormat = statusVars.map((v) => `"${v.json}":%s`).join(",");
-        const jsonValues = statusVars.map((v) => `"$${v.shell}"`).join(" ");
+        completedStatusVars.push({ shell: shellVar, json: jsonKey });
+        const jsonFormat = completedStatusVars.map((v) => `"${v.json}":%s`).join(",");
+        const jsonValues = completedStatusVars.map((v) => `"$${v.shell}"`).join(" ");
         blocks.push(`/bin/mkdir -p "$HOME/.cosmos"`, `FINISHED_AT="$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"`, `/usr/bin/printf '{"finished_at":"%s",${jsonFormat}}\\n' "$FINISHED_AT" ${jsonValues} > "$HOME/.cosmos/daemon-status.json"`, "");
     }
+    blocks.push('echo "[$(ts)] daemon tick done"', "");
     return blocks.join("\n");
 }
 function buildPlist(installedAppExec, intervalSec, logPath, errPath) {
