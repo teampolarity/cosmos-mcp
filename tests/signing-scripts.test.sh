@@ -92,6 +92,10 @@ grep -Fq 'NOTARY_ISSUER_ID is required' "$BUILD_SCRIPT" \
   || fail "build script does not require NOTARY_ISSUER_ID"
 pass "uses org notary key defaults without a stale issuer default"
 
+grep -Fq 'src/daemon/CosmosMainView.swift' "$BUILD_SCRIPT" \
+  || fail "build script omits CosmosMainView and cannot compile the native app"
+pass "builds the complete native app source set"
+
 stapler_line="$(grep -n 'xcrun stapler validate' "$BUILD_SCRIPT" | tail -1 | cut -d: -f1)"
 gatekeeper_line="$(grep -n '^spctl --assess' "$BUILD_SCRIPT" | tail -1 | cut -d: -f1)"
 if [[ -z "$stapler_line" || -z "$gatekeeper_line" || "$gatekeeper_line" -le "$stapler_line" ]]; then
