@@ -41,6 +41,7 @@ interface BrowserBatchOptions {
 export interface BrowserBatchResult {
   response: Response;
   errorDetail?: string;
+  summary?: { created?: number; updated?: number };
 }
 
 function delayForTransientFailure(response: Response, detail: string, attempt: number): number | null {
@@ -71,14 +72,25 @@ export async function postBrowserBatch(opts: BrowserBatchOptions): Promise<Brows
       timedOut = true;
       controller.abort();
     }, timeoutMs);
-    let response: Response;
     try {
-      response = await opts.fetch(`${opts.apiBase}/api/me/connectors/browser/visits`, {
+      const response = await opts.fetch(`${opts.apiBase}/api/me/connectors/browser/visits`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-MCP-Key": opts.token },
         body: JSON.stringify({ pages: opts.pages }),
         signal: controller.signal,
       });
+
+      if (response.ok) {
+        const summary = await response.json() as { created?: number; updated?: number };
+        return { response, summary };
+      }
+
+      const errorDetail = await response.text();
+      const retryDelay = delayForTransientFailure(response, errorDetail, attempt);
+      if (retryDelay === null || attempt >= MAX_D1_OVERLOAD_RETRIES) {
+        return { response, errorDetail };
+      }
+      await sleep(retryDelay);
     } catch (error) {
       if (timedOut && attempt < MAX_D1_OVERLOAD_RETRIES) {
         await sleep(INITIAL_D1_OVERLOAD_DELAY_MS * 2 ** attempt);
@@ -88,14 +100,6 @@ export async function postBrowserBatch(opts: BrowserBatchOptions): Promise<Brows
     } finally {
       clearTimeout(timeout);
     }
-    if (response.ok) return { response };
-
-    const errorDetail = await response.text();
-    const retryDelay = delayForTransientFailure(response, errorDetail, attempt);
-    if (retryDelay === null || attempt >= MAX_D1_OVERLOAD_RETRIES) {
-      return { response, errorDetail };
-    }
-    await sleep(retryDelay);
   }
 }
 
@@ -169,7 +173,7 @@ export async function runBrowserCli(argv: string[]): Promise<number> {
         process.stderr.write(`  batch ${i / POST_BATCH_SIZE + 1} failed: ${res.status} ${t.slice(0, 200)}\n`);
         failed += batch.length;
       } else {
-        const j = await res.json() as { created?: number; updated?: number };
+        const j = batchResult.summary || {};
         created += j.created || 0;
         updated += j.updated || 0;
         sent += batch.length;
