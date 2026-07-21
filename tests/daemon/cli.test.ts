@@ -36,6 +36,27 @@ vi.mock("../../src/daemon/paths.js", () => ({
 import { runDaemonCli } from "../../src/daemon/cli.js";
 
 describe("daemon configuration CLI", () => {
+  it("prints stable JSON for desktop clients", async () => {
+    const status = {
+      installed: true,
+      loaded: true,
+      plist_path: "/tmp/cosmos.plist",
+      app_path: "/Applications/Cosmos.app",
+      log_path: "/tmp/daemon.log",
+      config,
+      last_imessage_sync_at: "2026-07-21T20:00:00Z",
+    };
+    daemon.getDaemonStatus.mockReturnValue(status);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(runDaemonCli("status", ["--json"])).resolves.toBe(0);
+      expect(stdout).toHaveBeenCalledTimes(1);
+      expect(stdout).toHaveBeenCalledWith(`${JSON.stringify(status)}\n`);
+    } finally {
+      stdout.mockRestore();
+    }
+  });
+
   it("applies saved source choices without changing whether the daemon is installed", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

@@ -13,7 +13,7 @@ import { daemonPaths } from "./paths.js";
 function packageRoot() {
     return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
-export async function runDaemonCli(sub, _rest) {
+export async function runDaemonCli(sub, rest = []) {
     if (platform() !== "darwin") {
         process.stderr.write("daemon is macOS-only (it uses launchd). on other platforms, schedule\n" +
             "  npx -y @polarity-lab/cosmos-mcp browser sync\n" +
@@ -35,6 +35,10 @@ export async function runDaemonCli(sub, _rest) {
     }
     if (action === "status") {
         const st = getDaemonStatus();
+        if (rest.includes("--json")) {
+            process.stdout.write(`${JSON.stringify(st)}\n`);
+            return 0;
+        }
         process.stdout.write(`plist: ${st.installed ? st.plist_path : "(not installed)"}\n`);
         if (st.installed) {
             process.stdout.write(`runner: ${existsSync(paths.runnerPath) ? paths.runnerPath : "(missing!)"}\n`);
