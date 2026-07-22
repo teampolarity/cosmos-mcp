@@ -32,6 +32,10 @@ vi.mock("../../src/daemon/paths.js", () => ({
     runnerPath: "/tmp/daemon-run.sh",
   }),
 }));
+vi.mock("../../src/sources/imessage/state.js", () => ({
+  defaultPath: () => "/tmp/imessage-state.json",
+  loadState: () => ({ last_sync_at: "2026-07-21T20:00:00Z" }),
+}));
 
 import { runDaemonCli } from "../../src/daemon/cli.js";
 
@@ -50,6 +54,7 @@ describe("daemon configuration CLI", () => {
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       await expect(runDaemonCli("status", ["--json"])).resolves.toBe(0);
+      expect(daemon.getDaemonStatus).toHaveBeenCalledWith("2026-07-21T20:00:00Z");
       expect(stdout).toHaveBeenCalledTimes(1);
       expect(stdout).toHaveBeenCalledWith(`${JSON.stringify(status)}\n`);
     } finally {

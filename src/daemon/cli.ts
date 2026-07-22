@@ -10,8 +10,17 @@ import { spawnSync } from "node:child_process";
 import { loadSyncConfig } from "./config.js";
 import { applyDaemonConfig, getDaemonStatus, installDaemon, kickDaemon, uninstallDaemon, } from "./manage.js";
 import { daemonPaths } from "./paths.js";
+import { defaultPath as imessageStatePath, loadState as loadImessageState } from "../sources/imessage/state.js";
 function packageRoot() {
     return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+}
+function lastImessageSyncAt() {
+    try {
+        return loadImessageState(imessageStatePath()).last_sync_at;
+    }
+    catch {
+        return null;
+    }
 }
 export async function runDaemonCli(sub, rest = []) {
     if (platform() !== "darwin") {
@@ -34,7 +43,7 @@ export async function runDaemonCli(sub, rest = []) {
         return 0;
     }
     if (action === "status") {
-        const st = getDaemonStatus();
+        const st = getDaemonStatus(lastImessageSyncAt());
         if (rest.includes("--json")) {
             process.stdout.write(`${JSON.stringify(st)}\n`);
             return 0;

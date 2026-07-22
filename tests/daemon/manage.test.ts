@@ -24,6 +24,7 @@ describe("daemon runner", () => {
 
   it("publishes completed incremental sources before Browser History finishes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cosmos-daemon-progress-"));
+    let child: ReturnType<typeof spawn> | undefined;
     try {
       const fakeNpx = join(dir, "npx");
       const runner = join(dir, "daemon-run.sh");
@@ -32,7 +33,11 @@ case "$3" in
   imessage) exit 0 ;;
   calendar) exit 0 ;;
   shell-history) exit 0 ;;
-  browser) touch "$HOME/browser-started"; sleep 1; exit 1 ;;
+  browser)
+    touch "$HOME/browser-started"
+    while [ ! -f "$HOME/release-browser" ]; do sleep 0.05; done
+    exit 1
+    ;;
   *) exit 99 ;;
 esac
 `);
@@ -49,9 +54,9 @@ esac
       }));
       chmodSync(runner, 0o755);
 
-      const child = spawn("/bin/bash", [runner], { env: { ...process.env, HOME: dir } });
+      child = spawn("/bin/bash", [runner], { env: { ...process.env, HOME: dir } });
       const browserStarted = join(dir, "browser-started");
-      for (let attempt = 0; attempt < 20 && !existsSync(browserStarted); attempt += 1) {
+      for (let attempt = 0; attempt < 200 && !existsSync(browserStarted); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(existsSync(browserStarted)).toBe(true);
@@ -65,8 +70,13 @@ esac
       });
       expect(JSON.parse(readFileSync(statusPath, "utf8")).browser_exit).toBeUndefined();
 
+      writeFileSync(join(dir, "release-browser"), "");
       await once(child, "close");
     } finally {
+      if (child?.exitCode === null) {
+        child.kill();
+        await once(child, "close").catch(() => undefined);
+      }
       rmSync(dir, { recursive: true, force: true });
     }
   });
