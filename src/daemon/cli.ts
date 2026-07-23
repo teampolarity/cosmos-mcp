@@ -10,10 +10,19 @@ import { spawnSync } from "node:child_process";
 import { loadSyncConfig } from "./config.js";
 import { applyDaemonConfig, getDaemonStatus, installDaemon, kickDaemon, uninstallDaemon, } from "./manage.js";
 import { daemonPaths } from "./paths.js";
+import { defaultPath as imessageStatePath, loadState as loadImessageState } from "../sources/imessage/state.js";
 function packageRoot() {
     return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
-export async function runDaemonCli(sub, _rest) {
+function lastImessageSyncAt() {
+    try {
+        return loadImessageState(imessageStatePath()).last_sync_at;
+    }
+    catch {
+        return null;
+    }
+}
+export async function runDaemonCli(sub, rest = []) {
     if (platform() !== "darwin") {
         process.stderr.write("daemon is macOS-only (it uses launchd). on other platforms, schedule\n" +
             "  npx -y @polarity-lab/cosmos-mcp browser sync\n" +
@@ -34,7 +43,11 @@ export async function runDaemonCli(sub, _rest) {
         return 0;
     }
     if (action === "status") {
-        const st = getDaemonStatus();
+        const st = getDaemonStatus(lastImessageSyncAt());
+        if (rest.includes("--json")) {
+            process.stdout.write(`${JSON.stringify(st)}\n`);
+            return 0;
+        }
         process.stdout.write(`plist: ${st.installed ? st.plist_path : "(not installed)"}\n`);
         if (st.installed) {
             process.stdout.write(`runner: ${existsSync(paths.runnerPath) ? paths.runnerPath : "(missing!)"}\n`);
