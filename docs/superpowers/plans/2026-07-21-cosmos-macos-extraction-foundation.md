@@ -594,3 +594,15 @@ git commit -m "docs: record macos extraction foundation" -m "Co-authored-by: Cod
 ```
 
 Expected: both repositories are clean. The next plan begins with Connect and authentication, not release cutover or removal of the Swift app.
+
+## STATUS (Theodore cascade 2026-07-23)
+
+- [x] Task 1 — `~/cosmos-macos` extracted with Swift under `reference/swift`
+- [x] Task 2 — `daemon status --json` on this branch (tests green); linked locally via `npm link`
+- [x] Task 3 — Tauri 2 React/TS scaffold (`com.polaritylab.cosmos.macos`)
+- [x] Task 4 — Rust `engine_snapshot` adapter
+- [x] Task 5 — Today shell + EngineStatus
+- [x] Task 6 — Hermes project `cosmos` + refresh hook + MCP server (Theodore paths)
+- [ ] Task 7 — GitHub `teampolarity/cosmos-macos` + draft PR (attempted)
+- Swift production app still ships from `cosmos-mcp` until Tauri acceptance
+
